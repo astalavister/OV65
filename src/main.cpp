@@ -1,12 +1,14 @@
 #include <Arduino.h>
 //#include <EEPROM.h>
-//#include <Wire.h> 
+#include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
 #include <OneWire.h>
 #include <Keypad.h> //keypad lib
 #include "ACS712.h"
 #include "RTClib.h"
 #include <I2C_EEPROM.h>
+#include <LiquidMenu.h>
+
 
 
 
@@ -37,14 +39,14 @@ const int RTC_UPDATE_TIME = 1000; // Определяем периодичнос
 //ACS
 ACS712  ACS(CURRENT_IGN_PIN, 5.0, 1023, 66);//30 AMPERS sensor
 long lastAcsUpdateTime;
-const int ACS_UPDATE_TIME = 1000; // Определяем периодичность проверок
+const int ACS_UPDATE_TIME = 5000; // Определяем периодичность проверок
 
 ///KEYBOARD
 const byte ROWS = 1; // строки
 const byte COLS = 5; // столбца
 char keys[ROWS][COLS] = {{'A','M','L','R','P'}};
-byte rowPins[ROWS] = {7}; // подключить к выводам строк клавиатуры
-byte colPins[COLS] = {6, 5, 4, 3, 2}; // подключить к выводам столбцов клавиатуры
+byte rowPins[ROWS] = {3}; // подключить к выводам строк клавиатуры
+byte colPins[COLS] = {7, 6, 5, 2, 4}; // подключить к выводам столбцов клавиатуры
 Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 
 // set the LCD address to 0x27 for a 20 chars and 4 line display
@@ -62,18 +64,40 @@ long lastUpdateTime = 20000; // Переменная для хранения в�
 
 const int TEMP_UPDATE_TIME = 5000; // Определяем периодичность проверок
 
+char *timeresult= new char[7]{0,0,0,0,0,0,0};
+
+LiquidLine welcome_line1(1, 0, "LiquidMenu ", LIQUIDMENU_VERSION);
+// Here the column is 3, the row is 1 and the string is "Hello Menu".
+LiquidLine welcome_line2(1, 1, "Hello Menu I2C");
+/*
+ * LiquidScreen objects represent a single screen. A screen is made of
+ * one or more LiquidLine objects. Up to four LiquidLine objects can
+ * be inserted from here, but more can be added later in setup() using
+ * welcome_screen.add_line(someLine_object);.
+ */
+// Here the LiquidLine objects are the two objects from above.
+LiquidScreen welcome_screen(welcome_line1, welcome_line2);
+//char* ledState_text;
+// Here there is not only a text string but also a changing integer variable.
+LiquidLine analogReading_line(0, 0, "Temperature: ", CurrentTemp);
+LiquidLine ledState_line(10, 1, "RTC: ", timeresult);
+//LiquidLine ledState_line2(0, 2, "LED is ", timeresult);
+//LiquidLine ledState_line3(10, 3, "LED is ", timeresult);
+LiquidScreen secondary_screen(analogReading_line,ledState_line);
+
+/*
+ * The LiquidMenu object combines the LiquidScreen objects to form the
+ * menu. Here it is only instantiated and the screens are added later
+ * using menu.add_screen(someScreen_object);. This object is used to
+ * control the menu, for example: menu.next_screen(), menu.switch_focus()...
+ */
+LiquidMenu menu(display);
 
 
 void(* resetFunc) (void) = 0;//объявляем функцию reset с адресом 0
 
 bool automode = false;
 
-enum DisplayMode 
-{
-   ModeManual = 0,
-   ModeAuto,
-   ModeSetup,
-};
 
 bool curMotorRelayState = false;
 int MotorSpeed = 1;
@@ -96,53 +120,76 @@ bool GetAutoMode()
   return automode;
 }
 
-void keypadEvent(KeypadEvent key)
+void keypadEvent(Key key)
 {
-  switch (keypad.getState())
+  switch (key.kstate)
   {
     case IDLE:
-    // tone(Beep, 1000, 30);
-    break;
+     //tone(BEEP_PIN, 1000, 330);
+     break;
     case HOLD:
-    // tone(Beep, 1000, 30);
-    break;
-    case PRESSED:
-    // tone(Beep, 1000, 30);
-    break;
+     //tone(BEEP_PIN, 1000, 330);
+     //Serial.print("HOLD...");
+     //Serial.println(key.kchar);
+     if(key.kchar=='P')
+        resetFunc();
+     break;
     case RELEASED:
-    tone(BEEP_PIN, 800, 30);
-      switch (key)
+     //tone(BEEP_PIN, 1000, 330);
+     //Serial.print("PRESSES...");
+     //Serial.println(key.kchar);
+     break;
+    case PRESSED:
+         Serial.print("RELEASED...");
+     Serial.println(key.kchar);
+
+     tone(BEEP_PIN, 2000, 130);
+      switch (key.kchar)
       {
         case 'A': //AUTO
+        //menu.call_function(1);
           break;
         case 'M': //MENU
+        menu.switch_focus();
           break;
         case 'L': //LEFT
+        menu.previous_screen();
           break;
         case 'R': //RIGHT
+        menu.next_screen();
           break;
         case 'P': //POWER
+        //menu.call_function(2);
           break;
         default://all other keys
         break;
-     }
+      }
+      break;
   }
 }
-DisplayMode currDisplay = ModeManual;
-DisplayMode prevDisplay = ModeManual;
-char *timeresult;
+void ReadKeyboard()
+{
+  if (keypad.getKeys())
+  {
+    for (int i=0; i<LIST_MAX; i++)   // Scan the whole key list.
+    {
+      if ( keypad.key[i].stateChanged )   // Only find keys that have changed state.
+      {
+        keypadEvent(keypad.key[i]);
+      }
+    }
+  }
+}
+
+
 void setup()
 {
-
   memory.init();
-
-  timeresult = (char*)malloc(6);
-  Serial.begin(9600);
+  //timeresult = (char*)malloc(6);
+  Serial.begin(115200);
   delay(500);
   Serial.println("Starting RTC...");
   Serial.flush();
-
-
 
   if (!rtc.begin())
   {
@@ -217,16 +264,21 @@ void setup()
   //display.cursor();
   //display.blink();
   //display.noBacklight();
-  keypad.addEventListener(keypadEvent); // добавить слушателя события для данной клавиатуры
   keypad.setDebounceTime(150);
-  keypad.setHoldTime(1000);
+  keypad.setHoldTime(5000);
   automode = GetAutoMode();
+
+  menu.init();
+// This is the method used to add a screen object to the menu.
+  menu.add_screen(welcome_screen);
+  menu.add_screen(secondary_screen);
+
 }
 
 int ignitorMA = 0;
 void DisplayStatus()
 {
-
+/*
   if (!(millis() - lastLcdUpdateTime > LCD_UPDATE_TIME))
   {
     return;
@@ -234,62 +286,58 @@ void DisplayStatus()
   lastLcdUpdateTime = millis();
 
    // Serial.println(temperature); // Выводим полученное значение температуры
-    
-    if(prevDisplay!=currDisplay)
-      display.clear();
-      
-    display.setCursor(0,0); // установка позиции курсора
-        //
-        //  0,0 ------- 20,0
-        //   |
-        //   |
-        //  0,3
-        //
-    switch (currDisplay)
-    {
-      case ModeManual:
-      {
-          display.setCursor(0,0); // установка позиции курсора
-          display.print("Manual"); 
- 
-          sprintf(timeresult, "%02d:%02d", timenow.hour(),timenow.minute());
-          display.setCursor(15,0); // установка позиции курсора
-          display.print(timeresult);
 
-          display.setCursor(0,1); // установка позиции курсора
-          display.print("BEHT :"); 
-          display.setCursor(6,1); 
-          if(!curMotorRelayState)
-            display.print("OFF"); 
-          else
-            display.print("ON"); 
-          display.setCursor(10,1); 
-          display.print("CKOP:"); 
-          display.setCursor(16,1); 
-          display.print(MotorSpeed); 
+  display.setCursor(0, 0); // установка позиции курсора
+                           //
+                           //  0,0 ------- 20,0
+                           //   |
+                           //   |
+                           //  0,3
+                           //
+  switch (currDisplay)
+  {
+  case ModeManual:
+  {
+    display.setCursor(0, 0); // установка позиции курсора
+    display.print("Manual");
 
-          display.setCursor(0,2); // установка позиции курсора
-          display.print("CBE4A:"); 
-          display.setCursor(6,2); 
-          if(!SparkState)
-            display.print("OFF"); 
-          else
-            display.print("ON"); 
-          display.setCursor(10,2); 
-          display.print("TOK:"); 
-          display.setCursor(15,2); 
-          display.print(SparkCurrent); 
-          display.setCursor(19,2); 
-          display.print("A"); 
+    sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
+    display.setCursor(15, 0); // установка позиции курсора
+    display.print(timeresult);
 
-          display.setCursor(4,3);   
-          display.print("TEMP:"); 
-          display.setCursor(10,3); 
-          display.print(CurrentTemp); 
+    display.setCursor(0, 1); // установка позиции курсора
+    display.print("BEHT :");
+    display.setCursor(6, 1);
+    if (!curMotorRelayState)
+      display.print("OFF");
+    else
+      display.print("ON");
+    display.setCursor(10, 1);
+    display.print("CKOP:");
+    display.setCursor(16, 1);
+    display.print(MotorSpeed);
 
-      }
-      break;
-      /*case ModeAuto:
+    display.setCursor(0, 2); // установка позиции курсора
+    display.print("CBE4A:");
+    display.setCursor(6, 2);
+    if (!SparkState)
+      display.print("OFF");
+    else
+      display.print("ON");
+    display.setCursor(10, 2);
+    display.print("TOK:");
+    display.setCursor(15, 2);
+    display.print(SparkCurrent);
+    display.setCursor(19, 2);
+    display.print("A");
+
+    display.setCursor(4, 3);
+    display.print("TEMP:");
+    display.setCursor(10, 3);
+    display.print(CurrentTemp);
+  }
+  //break;
+  /*case ModeAuto:
       {
         //get data first
         ReadWeather();
@@ -314,10 +362,10 @@ void DisplayStatus()
         display.println(totalMilliLitres/1000);
       }
       break;*/
-      default:
-      break;
-    }
-    display.display();
+///  default:
+  //  break;
+//  }
+  //display.display();
 }
 
 void detectTemperature()
@@ -343,12 +391,12 @@ void detectTemperature()
       //CurrentTemp = 99.99;
       return;
     }
-    Serial.print("ROM =");
-    for( i = 0; i < 8; i++) 
-    {
-      Serial.write(' ');
-      Serial.print(addr[i], HEX);
-    }
+  //  Serial.print("ROM =");
+    //for( i = 0; i < 8; i++) 
+   // {
+   //   Serial.write(' ');
+     // Serial.print(addr[i], HEX);
+    //}
     if (OneWire::crc8(addr, 7) != addr[7]) 
     {
       Serial.println("Temp: CRC is not valid!");
@@ -359,19 +407,19 @@ void detectTemperature()
     switch (addr[0]) 
     {
       case 0x10:
-      Serial.println(" Chip = DS18S20"); // или более старый DS1820
+     // Serial.println(" Chip = DS18S20"); // или более старый DS1820
       type_s = 1;
       break;
       case 0x28:
-      Serial.println(" Chip = DS18B20");
+    //  Serial.println(" Chip = DS18B20");
       type_s = 0;
       break;
       case 0x22:
-      Serial.println(" Chip = DS1822");
+    //  Serial.println(" Chip = DS1822");
       type_s = 0;
       break;
       default:
-      Serial.println("Device is not a DS18x20 family device.");
+    //  Serial.println("Device is not a DS18x20 family device.");
       CurrentTemp = 99.99;
       return;
     }
@@ -383,18 +431,18 @@ void detectTemperature()
     present = ds.reset();
     ds.select(addr);
     ds.write(0xBE);
-    Serial.print(" Data = ");
-    Serial.print(present, HEX);
-    Serial.print(" ");
+  //  Serial.print(" Data = ");
+  //  Serial.print(present, HEX);
+ //   Serial.print(" ");
     for ( i = 0; i < 9; i++) 
     { // нам необходимо 9 байт
       data[i] = ds.read();
-      Serial.print(data[i], HEX);
-      Serial.print(" ");
+   //   Serial.print(data[i], HEX);
+    //  Serial.print(" ");
     }
-    Serial.print(" CRC=");
-    Serial.print(OneWire::crc8(data, 8), HEX);
-    Serial.println();
+   // Serial.print(" CRC=");
+  //  Serial.print(OneWire::crc8(data, 8), HEX);
+    //Serial.println();
     // конвертируем данный в фактическую температуру
     // так как результат является 16 битным целым, его надо хранить в
     // переменной с типом данных "int16_t", которая всегда равна 16 битам,
@@ -429,8 +477,7 @@ void detectTemperature()
      ds.depower();
     }  
 }
-void MotorRelayOn()
-{
+void MotorRelayOn() {
     if(curMotorRelayState==false)
     {
       digitalWrite(MOTOR_RELAY_PIN, LOW);
@@ -466,7 +513,7 @@ void ReadRTC()
   }
   lastRtcUpdateTime = millis();
   timenow = rtc.now();
-
+  sprintf(timeresult, "%02d:%02d", timenow.hour(),timenow.minute());
   /* Serial.print(timenow.year(), DEC);
   Serial.print('/');
   Serial.print(timenow.month(), DEC);
@@ -493,10 +540,26 @@ void ReadACS()
   Serial.print("ACS: ");
   Serial.println(SparkCurrent,DEC);
 }
+
+String msg;
+
+unsigned int period_check = 1000;
+unsigned long lastMs_check = 0;
+
+unsigned int period_nextScreen = 5000;
+unsigned long lastMs_nextScreen = 0;
+
 void loop()
 {
   ReadRTC();
-  DisplayStatus();
+  //DisplayStatus();
   detectTemperature(); // Определяем температуру от датчика DS18b20
   ReadACS();//ток свечи
+  ReadKeyboard();
+
+   if (millis() - lastMs_check > period_check) 
+   {
+    lastMs_check = millis();
+      menu.update();
+    }
 }
