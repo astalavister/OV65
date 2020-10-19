@@ -1,33 +1,265 @@
 #include <Arduino.h>
 //#include <EEPROM.h>
-#include <Wire.h> 
+#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <OneWire.h>
 #include <Keypad.h> //keypad lib
 #include "ACS712.h"
 #include "RTClib.h"
 #include <I2C_EEPROM.h>
-#include <LiquidMenu.h>
+#include <Bounce2.h>
 
+byte bukva_B[8] = {
+    B11110,
+    B10000,
+    B10000,
+    B11110,
+    B10001,
+    B10001,
+    B11110,
+    B00000,
+}; // Буква "Б"
+byte bukva_G[8] = {
+    B11111,
+    B10001,
+    B10000,
+    B10000,
+    B10000,
+    B10000,
+    B10000,
+    B00000,
+}; // Буква "Г"
+byte bukva_D[8] = {
+    B01111,
+    B00101,
+    B00101,
+    B01001,
+    B10001,
+    B11111,
+    B10001,
+    B00000,
+}; // Буква "Д"
+byte bukva_ZH[8] = {
+    B10101,
+    B10101,
+    B10101,
+    B11111,
+    B10101,
+    B10101,
+    B10101,
+    B00000,
+}; // Буква "Ж"
+byte bukva_Z[8] = {
+    B01110,
+    B10001,
+    B00001,
+    B00010,
+    B00001,
+    B10001,
+    B01110,
+    B00000,
+}; // Буква "З"
+byte bukva_I[8] = {
+    B10001,
+    B10011,
+    B10011,
+    B10101,
+    B11001,
+    B11001,
+    B10001,
+    B00000,
+}; // Буква "И"
+byte bukva_IY[8] = {
+    B01110,
+    B00000,
+    B10001,
+    B10011,
+    B10101,
+    B11001,
+    B10001,
+    B00000,
+}; // Буква "Й"
+byte bukva_L[8] = {
+    B00011,
+    B00111,
+    B00101,
+    B00101,
+    B01101,
+    B01001,
+    B11001,
+    B00000,
+}; // Буква "Л"
+byte bukva_P[8] = {
+    B11111,
+    B10001,
+    B10001,
+    B10001,
+    B10001,
+    B10001,
+    B10001,
+    B00000,
+}; // Буква "П"
+byte bukva_Y[8] = {
+    B10001,
+    B10001,
+    B10001,
+    B01010,
+    B00100,
+    B01000,
+    B10000,
+    B00000,
+}; // Буква "У"
+byte bukva_F[8] = {
+    B00100,
+    B11111,
+    B10101,
+    B10101,
+    B11111,
+    B00100,
+    B00100,
+    B00000,
+}; // Буква "Ф"
+byte bukva_TS[8] = {
+    B10010,
+    B10010,
+    B10010,
+    B10010,
+    B10010,
+    B10010,
+    B11111,
+    B00001,
+}; // Буква "Ц"
+byte bukva_CH[8] = {
+    B10001,
+    B10001,
+    B10001,
+    B01111,
+    B00001,
+    B00001,
+    B00001,
+    B00000,
+}; // Буква "Ч"
+byte bukva_Sh[8] = {
+    B10101,
+    B10101,
+    B10101,
+    B10101,
+    B10101,
+    B10101,
+    B11111,
+    B00000,
+}; // Буква "Ш"
+byte bukva_Shch[8] = {
+    B10101,
+    B10101,
+    B10101,
+    B10101,
+    B10101,
+    B10101,
+    B11111,
+    B00001,
+}; // Буква "Щ"
+byte bukva_Mz[8] = {
+    B10000,
+    B10000,
+    B10000,
+    B11110,
+    B10001,
+    B10001,
+    B11110,
+    B00000,
+}; // Буква "Ь"
+byte bukva_IYI[8] = {
+    B10001,
+    B10001,
+    B10001,
+    B11001,
+    B10101,
+    B10101,
+    B11001,
+    B00000,
+}; // Буква "Ы"
+byte bukva_Yu[8] = {
+    B10010,
+    B10101,
+    B10101,
+    B11101,
+    B10101,
+    B10101,
+    B10010,
+    B00000,
+}; // Буква "Ю"
+byte bukva_Ya[8] = {
+    B01111,
+    B10001,
+    B10001,
+    B01111,
+    B00101,
+    B01001,
+    B10001,
+    B00000,
+}; // Буква "Я"
 
+#define DS_PIN A0            // DS18B20 data pin
+#define CURRENT_IGN_PIN A1   //Current meter pin
 
+#define NUM_BUTTONS 2
+const uint8_t BUTTON_PINS[NUM_BUTTONS] = {A2, A3};
+Bounce * buttons = new Bounce[NUM_BUTTONS];
+//#define TEMP_WORK_PIN A2     //Working temp sensor
+//#define TEMP_OVERHEAT_PIN A3 //Overheat sensor pin
 
-#define DS_PIN A0 // DS18B20 data pin
-#define CURRENT_IGN_PIN A1 //Current meter pin
-#define TEMP_WORK_PIN A2 //Working temp sensor
-#define TEMP_OVERHEAT_PIN A3 //Overheat sensor pin
+#define BEEP_PIN 12              //Beeper
+#define BEEP_PIN_GROUND 13       //Beeper Ground
+#define MOTOR_RELAY_PIN 8       //motor on/off relay
+#define MOTOR_SPEED_RELAY_PIN 9 //motor speed relay (1/2)
+#define FUEL_VALVE_RELAY_PIN 10   // fuel valve relay
+#define IGNITION_RELAY_PIN 11     // ingition relay
 
-#define BEEP_PIN 12 //Beeper
-#define BEEP_PIN_GROUND 13 //Beeper Ground
-#define MOTOR_RELAY_PIN 11 //motor on/off relay
-#define MOTOR_SPEED_RELAY_PIN 10 //motor speed relay (1/2)
-#define FUEL_VALVE_RELAY_PIN 9 // fuel valve relay
-#define IGNITION_RELAY_PIN 8 // ingition relay
+enum WorkMode
+{
+  ModeManual,
+  ModeAuto
+};
+
+enum StartProcessStage
+{
+  IdleToStart,
+  StartFuel, 
+  StartIgnition, //wait 30 seconds
+  StartHalfMotor, //wait 30 seconds
+  StopIgnition, //wait for sensor
+  StartFullMotor 
+};
+DateTime dtStartIgnition;
+DateTime dtStartHalfMotor;
+DateTime dtStopIgnition;
+
+enum StopProcessStage
+{
+  HeaterStarted,
+  StopFuel, 
+  WaitToStopFire, //wait for sensor
+  StopMotor,
+  IdleStopped,
+};
+
+WorkMode currentMode = ModeManual;
+StartProcessStage currentStartStage = IdleToStart;
+StopProcessStage currentStopStage = IdleStopped;
+
+bool IsAlarm = false;
+bool IsDeviceStopped = false;
+bool IsNoIgnition = false;
+bool IsFired = false;
+bool IsIdle = true;
+
+String msg = "";
 
 //EEPROM
 I2C_EEPROM memory(0x50); // on RTC board
 
-//RTC 
+//RTC
 RTC_DS1307 rtc;
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 DateTime dtStart;
@@ -35,172 +267,302 @@ DateTime timenow;
 long lastRtcUpdateTime;
 const int RTC_UPDATE_TIME = 1000; // Определяем периодичность проверок
 
-
 //ACS
-ACS712  ACS(CURRENT_IGN_PIN, 5.0, 1023, 66);//30 AMPERS sensor
+ACS712 ACS(CURRENT_IGN_PIN, 5.0, 1023, 66); //30 AMPERS sensor
 long lastAcsUpdateTime;
-const int ACS_UPDATE_TIME = 5000; // Определяем периодичность проверок
+const int ACS_UPDATE_TIME = 1000; // Определяем периодичность проверок
 
 ///KEYBOARD
 const byte ROWS = 1; // строки
 const byte COLS = 5; // столбца
-char keys[ROWS][COLS] = {{'A','M','L','R','P'}};
-byte rowPins[ROWS] = {3}; // подключить к выводам строк клавиатуры
+char keys[ROWS][COLS] = {{'A', 'M', 'L', 'R', 'P'}};
+byte rowPins[ROWS] = {3};             // подключить к выводам строк клавиатуры
 byte colPins[COLS] = {7, 6, 5, 2, 4}; // подключить к выводам столбцов клавиатуры
-Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 // set the LCD address to 0x27 for a 20 chars and 4 line display
-LiquidCrystal_I2C display(0x27,20,4);  
-long lastLcdUpdateTime = 20000; // Переменная для хранения времени ПОКАЗА НА lcd
+LiquidCrystal_I2C display(0x27, 20, 4);
+long lastLcdUpdateTime = 20000;  // Переменная для хранения времени ПОКАЗА НА lcd
 const int LCD_UPDATE_TIME = 500; // Определяем периодичность ПОКАЗА НА lcd
 
-
 //Temperarure sensor
-OneWire ds(DS_PIN); // Создаем объект OneWire для шины 1-Wire, с помощью которого будет осуществляться работа с датчиком
+OneWire ds(DS_PIN);                 // Создаем объект OneWire для шины 1-Wire, с помощью которого будет осуществляться работа с датчиком
+int CurrentTemp = 99.99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
+long lastUpdateTime = 20000;        // Переменная для хранения времени последнего считывания с датчика
+const int TEMP_UPDATE_TIME = 10000; // Определяем периодичность проверок
+byte neededTemp = 20;
 
-float CurrentTemp = 99.99; // Глобальная переменная для хранения значение температуры с датчика DS18B20
-
-long lastUpdateTime = 20000; // Переменная для хранения времени последнего считывания с датчика
-
-const int TEMP_UPDATE_TIME = 5000; // Определяем периодичность проверок
-
-char *timeresult= new char[7]{0,0,0,0,0,0,0};
-
-LiquidLine welcome_line1(1, 0, "LiquidMenu ", LIQUIDMENU_VERSION);
-// Here the column is 3, the row is 1 and the string is "Hello Menu".
-LiquidLine welcome_line2(1, 1, "Hello Menu I2C");
-/*
- * LiquidScreen objects represent a single screen. A screen is made of
- * one or more LiquidLine objects. Up to four LiquidLine objects can
- * be inserted from here, but more can be added later in setup() using
- * welcome_screen.add_line(someLine_object);.
- */
-// Here the LiquidLine objects are the two objects from above.
-LiquidScreen welcome_screen(welcome_line1, welcome_line2);
-//char* ledState_text;
-// Here there is not only a text string but also a changing integer variable.
-LiquidLine analogReading_line(0, 0, "Temperature: ", CurrentTemp);
-LiquidLine ledState_line(10, 1, "RTC: ", timeresult);
-//LiquidLine ledState_line2(0, 2, "LED is ", timeresult);
-//LiquidLine ledState_line3(10, 3, "LED is ", timeresult);
-LiquidScreen secondary_screen(analogReading_line,ledState_line);
-
-/*
- * The LiquidMenu object combines the LiquidScreen objects to form the
- * menu. Here it is only instantiated and the screens are added later
- * using menu.add_screen(someScreen_object);. This object is used to
- * control the menu, for example: menu.next_screen(), menu.switch_focus()...
- */
-LiquidMenu menu(display);
-
-
-void(* resetFunc) (void) = 0;//объявляем функцию reset с адресом 0
-
-bool automode = false;
-
+char *timeresult = new char[7]{0, 0, 0, 0, 0, 0, 0};
+void (*resetFunc)(void) = 0; //объявляем функцию reset с адресом 0
 
 bool curMotorRelayState = false;
 int MotorSpeed = 1;
 
-bool SparkState = false;
+bool SparkRelayState = false;
 int SparkCurrent = 0;
+//int ignitorMA = 0;
 
-void SetAutoMode(bool modeset)
+bool FuelRelayState = false;
+
+void FuelRelayOn()
 {
-    automode = modeset; 
-    memory.write(0x00, automode == true ? 0x01 : 0x00);
+  //Serial.println("Fuel is ON");
+  if (FuelRelayState == false)
+  {
+    digitalWrite(FUEL_VALVE_RELAY_PIN, LOW);
+    tone(BEEP_PIN, 2000, 200);
+    delay(150);
+    tone(BEEP_PIN, 1800, 200);
+    FuelRelayState = true;
+  }
 }
-bool GetAutoMode()
+void FuelRelayOff()
 {
-  //bool a = EEPROM.read(0);
-  //Serial.print(a);
-  //return EEPROM.read(0);
+  //Serial.println("Fuel is OFF");
+  if (FuelRelayState == true)
+  {
+    digitalWrite(FUEL_VALVE_RELAY_PIN, HIGH);
+    tone(BEEP_PIN, 1800, 200);
+    delay(150);
+    tone(BEEP_PIN, 2000, 200);
+    FuelRelayState = false;
+  }
+}
+DateTime sparkStartTime;
+void SparkRelayOn()
+{
+  //Serial.println("Spark is ON");
+  if (SparkRelayState == false)
+  {
+    digitalWrite(IGNITION_RELAY_PIN, LOW);
+    tone(BEEP_PIN, 2000, 200);
+    delay(150);
+    tone(BEEP_PIN, 1800, 200);
+    SparkRelayState = true;
+    sparkStartTime = timenow;
+  }
+}
+void SparkRelayOff()
+{
+  //Serial.println("Spark is OFF");
+  if (SparkRelayState == true)
+  {
+    digitalWrite(IGNITION_RELAY_PIN, HIGH);
+    tone(BEEP_PIN, 1800, 200);
+    delay(150);
+    tone(BEEP_PIN, 2000, 200);
+    SparkRelayState = false;
+  }
+}
+void MotorRelayOn()
+{
+  //Serial.println("Motor ON");
+  if (curMotorRelayState == false)
+  {
+    digitalWrite(MOTOR_RELAY_PIN, LOW);
+    tone(BEEP_PIN, 2000, 200);
+    delay(150);
+    tone(BEEP_PIN, 1800, 200);
+    curMotorRelayState = true;
+  }
+}
+void MotorRelayOff()
+{
+  //Serial.println("Motor OFF");
+  if (curMotorRelayState == true)
+  {
+    digitalWrite(MOTOR_RELAY_PIN, HIGH);
+    tone(BEEP_PIN, 1800, 200);
+    delay(150);
+    tone(BEEP_PIN, 2000, 200);
+    curMotorRelayState = false;
+  }
+}
+void MotorSpeed2()
+{
+  //Serial.println("Motor Speed 2");
+  digitalWrite(MOTOR_SPEED_RELAY_PIN, LOW);
+  tone(BEEP_PIN, 2000, 200);
+  MotorSpeed = 2;
+
+}
+void MotorSpeed1()
+{
+    //Serial.println("Motor Speed 1");
+    digitalWrite(MOTOR_SPEED_RELAY_PIN, HIGH);
+    tone(BEEP_PIN, 1800, 200);
+    MotorSpeed = 1;
+}
+void SetAutoMode()
+{
+  memory.write(0x00, currentMode == ModeManual ? 0x00 : 0x01);
+}
+void GetAutoMode()
+{
   byte readData = memory.read(0x00);
-  automode = readData == 1;
-  return automode;
+  currentMode = readData == 0 ? ModeManual : ModeAuto;
 }
-
+void SetTemp()
+{
+  memory.write(0x01, neededTemp);
+}
+void GetTemp()
+{
+  neededTemp = memory.read(0x01);
+}
+void StartHeater()
+{
+  if(currentStartStage==IdleToStart)
+  {
+    IsIdle = false;
+    //Serial.println("StartHeater()");
+    currentStartStage = StartFuel;
+  }
+}
+void StopHeater()
+{
+  if(currentStopStage==HeaterStarted)
+  {
+    currentStopStage = StopFuel;
+    //Serial.println("StopHeater()");
+  }
+}
 void keypadEvent(Key key)
 {
   switch (key.kstate)
   {
-    case IDLE:
-     //tone(BEEP_PIN, 1000, 330);
-     break;
-    case HOLD:
-     //tone(BEEP_PIN, 1000, 330);
-     //Serial.print("HOLD...");
-     //Serial.println(key.kchar);
-     if(key.kchar=='P')
-        resetFunc();
-     break;
-    case RELEASED:
-     //tone(BEEP_PIN, 1000, 330);
-     //Serial.print("PRESSES...");
-     //Serial.println(key.kchar);
-     break;
-    case PRESSED:
-         Serial.print("RELEASED...");
-     Serial.println(key.kchar);
-
-     tone(BEEP_PIN, 2000, 130);
-      switch (key.kchar)
+  case IDLE:
+    //tone(BEEP_PIN, 1000, 330);
+    break;
+  case HOLD:
+    //tone(BEEP_PIN, 1000, 330);
+    //Serial.print("HOLD...");
+    //Serial.println(key.kchar);
+    if (key.kchar == 'P')
+      resetFunc();
+    break;
+  case RELEASED:
+    //tone(BEEP_PIN, 1000, 330);
+    //Serial.print("PRESSES...");
+    //Serial.println(key.kchar);
+    break;
+  case PRESSED:
+        if(IsAlarm)
+        break;
+    //Serial.print("PRESSES...");
+    //Serial.println(key.kchar);
+    switch (key.kchar)
+    {
+    case 'A': //AUTO
+      if (currentMode == ModeManual && IsIdle)
       {
-        case 'A': //AUTO
-        //menu.call_function(1);
-          break;
-        case 'M': //MENU
-        menu.switch_focus();
-          break;
-        case 'L': //LEFT
-        menu.previous_screen();
-          break;
-        case 'R': //RIGHT
-        menu.next_screen();
-          break;
-        case 'P': //POWER
-        //menu.call_function(2);
-          break;
-        default://all other keys
+        tone(BEEP_PIN, 550, 100);
+        currentMode = ModeAuto;
+        SetAutoMode();
+        break;
+      }
+      if(currentMode == ModeAuto)
+      {
+        tone(BEEP_PIN, 1550, 100);
+        currentMode = ModeManual;
+        SetAutoMode();
         break;
       }
       break;
+    case 'M': //MENU
+      break;
+    case 'L': //LEFT
+      if (neededTemp >= 11)
+      {
+        neededTemp--;
+        SetTemp();
+        tone(BEEP_PIN, 2000, 100);
+      }
+      else
+      {
+        tone(BEEP_PIN, 800, 100);
+      }
+      //menu.previous_screen();
+      break;
+    case 'R': //RIGHT
+      if (neededTemp < 30)
+      {
+        neededTemp++;
+        SetTemp();
+        tone(BEEP_PIN, 2000, 100);
+      }
+      else
+      {
+        tone(BEEP_PIN, 800, 100);
+      }
+      break;
+    case 'P': //POWER
+      if (currentMode == ModeManual)
+      {
+        if(IsIdle)
+        {
+          tone(BEEP_PIN, 900, 100);
+          StartHeater();
+        } else
+        {
+          tone(BEEP_PIN, 900, 100);
+          StopHeater();
+        }
+      }
+      break;
+    default: //all other keys
+      break;
+    }
+    break;
   }
 }
 void ReadKeyboard()
 {
   if (keypad.getKeys())
   {
-    for (int i=0; i<LIST_MAX; i++)   // Scan the whole key list.
+    for (int i = 0; i < LIST_MAX; i++) // Scan the whole key list.
     {
-      if ( keypad.key[i].stateChanged )   // Only find keys that have changed state.
+      if (keypad.key[i].stateChanged) // Only find keys that have changed state.
       {
         keypadEvent(keypad.key[i]);
       }
     }
   }
 }
-
-
 void setup()
 {
   memory.init();
   //timeresult = (char*)malloc(6);
   Serial.begin(115200);
-  delay(500);
-  Serial.println("Starting RTC...");
-  Serial.flush();
-
+    // initialize the lcd
+  display.init();
+  display.init();
+  // Print a message to the LCD.
+  display.backlight();
+  display.setCursor(4, 0);
+  display.print(F("OV-65 Heater"));
+  display.setCursor(5, 1);
+  display.print(F("controller"));
+  display.setCursor(6, 2);
+  display.print(F("(c) 2020"));
+  display.setCursor(3, 3);
+  display.print(F("vasp@zabmail.ru"));
+  delay(1000);
+  //Serial.println("Starting RTC...");
+  display.setCursor(3, 3);
+  display.print(F("Starting RTC..."));
+  //Serial.flush();
   if (!rtc.begin())
   {
-    Serial.println("Couldn't find RTC");
-    Serial.flush();
+    display.setCursor(3, 3);
+    display.print(F("NO RTC!!!"));
+    //Serial.println("Couldn't find RTC");
+    //Serial.flush();
     abort();
   }
-
-  if (! rtc.isrunning())
+  if (!rtc.isrunning())
   {
-    Serial.println("RTC is NOT running, let's set the time!");
+    //Serial.println("RTC is NOT running, let's set the time!");
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -213,40 +575,30 @@ void setup()
   //relays (used modules are on with LOW!!! state)
   pinMode(MOTOR_RELAY_PIN, INPUT_PULLUP);
   pinMode(MOTOR_RELAY_PIN, OUTPUT);
-  digitalWrite(MOTOR_RELAY_PIN, HIGH);//off at start
+  digitalWrite(MOTOR_RELAY_PIN, HIGH); //off at start
 
   pinMode(MOTOR_SPEED_RELAY_PIN, INPUT_PULLUP);
   pinMode(MOTOR_SPEED_RELAY_PIN, OUTPUT);
-  digitalWrite(MOTOR_SPEED_RELAY_PIN, HIGH);//speed one at start
+  digitalWrite(MOTOR_SPEED_RELAY_PIN, HIGH); //speed one at start
 
   pinMode(FUEL_VALVE_RELAY_PIN, INPUT_PULLUP);
   pinMode(FUEL_VALVE_RELAY_PIN, OUTPUT);
-  digitalWrite(FUEL_VALVE_RELAY_PIN, HIGH);//off at start
+  digitalWrite(FUEL_VALVE_RELAY_PIN, HIGH); //off at start
 
   pinMode(IGNITION_RELAY_PIN, INPUT_PULLUP);
   pinMode(IGNITION_RELAY_PIN, OUTPUT);
-  digitalWrite(IGNITION_RELAY_PIN, HIGH);//off at start
+  digitalWrite(IGNITION_RELAY_PIN, HIGH); //off at start
 
   //inputs from heater sensors (LOW when they is ON)
-  pinMode(TEMP_WORK_PIN , INPUT_PULLUP);
-  pinMode(TEMP_OVERHEAT_PIN , INPUT_PULLUP);
-  
+  for (int i = 0; i < NUM_BUTTONS; i++) {
+    buttons[i].attach( BUTTON_PINS[i] , INPUT_PULLUP  );       //setup the bounce instance for the current button
+    buttons[i].interval(125); // interval in ms
+  }
+  //pinMode(TEMP_WORK_PIN, INPUT_PULLUP);
+  //pinMode(TEMP_OVERHEAT_PIN, INPUT_PULLUP);
+
   // CurrentMeter setup
   ACS.autoMidPoint();
-
-  // initialize the lcd 
-  display.init();                      
-  display.init();
-  // Print a message to the LCD.
-  display.backlight();
-  display.setCursor(4,0);
-  display.print("OV-65 Heater");
-  display.setCursor(5,1);
-  display.print("controller");
-  display.setCursor(6,2);
-  display.print("(c) 2020");
-  display.setCursor(3,3);
-  display.print("vasp@zabmail.ru");
 
   //beep on start
   pinMode(BEEP_PIN, OUTPUT);
@@ -255,256 +607,242 @@ void setup()
   //пищим
   tone(BEEP_PIN, 1000, 100);
   delay(250);
-  tone(BEEP_PIN, 1200, 100);
-  delay(250);
   tone(BEEP_PIN, 1500, 100);
-  delay(350);
-  tone(BEEP_PIN, 1800, 100); 
-  display.clear();
   //display.cursor();
   //display.blink();
   //display.noBacklight();
-  keypad.setDebounceTime(150);
+  keypad.setDebounceTime(100);
   keypad.setHoldTime(5000);
-  automode = GetAutoMode();
-
-  menu.init();
-// This is the method used to add a screen object to the menu.
-  menu.add_screen(welcome_screen);
-  menu.add_screen(secondary_screen);
-
+  GetTemp();
+  GetAutoMode();
+  delay(1000);
+  display.clear();
+  display.createChar(1, bukva_P);  // Создаем символ под номером 1
+  display.createChar(2, bukva_I);  // Создаем символ под номером 2
+  display.createChar(3, bukva_CH); // Создаем символ под номером 3
+  display.createChar(4, bukva_Y);  // Создаем символ под номером 4
+  display.createChar(5, bukva_IY); // Создаем символ под номером 5
+  display.createChar(6, bukva_G); // Создаем символ под номером 6
+  display.createChar(7, bukva_L); // Создаем символ под номером 7
 }
-
-int ignitorMA = 0;
+void StopDevice()
+{
+  if(IsDeviceStopped)
+    return;
+  FuelRelayOff();
+    delay(300);
+  MotorRelayOff();
+    delay(300);
+  SparkRelayOff();
+    delay(300);
+  IsDeviceStopped = true;
+} 
+String sparkTime="  ";
 void DisplayStatus()
 {
-/*
   if (!(millis() - lastLcdUpdateTime > LCD_UPDATE_TIME))
   {
     return;
   }
   lastLcdUpdateTime = millis();
-
-   // Serial.println(temperature); // Выводим полученное значение температуры
-
-  display.setCursor(0, 0); // установка позиции курсора
+  //display.setCursor(0, 0); // установка позиции курсора
                            //
                            //  0,0 ------- 20,0
                            //   |
                            //   |
                            //  0,3
                            //
-  switch (currDisplay)
+  if(IsAlarm)
   {
-  case ModeManual:
+    display.clear();
+    tone(BEEP_PIN, 500, 100);
+    StopDevice();
+    display.setCursor(3, 1); // установка позиции курсора
+    if(IsNoIgnition)
+      display.print(F("CBE\3A HET TOKA"));
+    else
+      display.print(F("  OVERHEAT!!!"));
+    return;
+  }
+  if (currentMode == ModeManual)
   {
     display.setCursor(0, 0); // установка позиции курсора
-    display.print("Manual");
+    display.print(F("P\4\3HO\5 "));
+  }
+  else
+  {
+    display.setCursor(0, 0); // установка позиции курсора
+    display.print(F("ABTOMAT "));
+  }
+  display.print(msg);
+  //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
+  display.setCursor(17, 0); // установка позиции курсора
+  if(IsFired)
+    display.print(F("\6OP"));
+  else
+    display.print(F("XO\7"));
 
-    sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
-    display.setCursor(15, 0); // установка позиции курсора
-    display.print(timeresult);
-
-    display.setCursor(0, 1); // установка позиции курсора
-    display.print("BEHT :");
-    display.setCursor(6, 1);
-    if (!curMotorRelayState)
-      display.print("OFF");
-    else
-      display.print("ON");
+  display.setCursor(0, 1); // установка позиции курсора
+  display.print(F("MOTOP"));
+  display.setCursor(6, 1);
+  if (!curMotorRelayState)
+    display.print(F("OFF"));
+  else
+  {
+    display.print(F("ON "));
     display.setCursor(10, 1);
-    display.print("CKOP:");
-    display.setCursor(16, 1);
+    display.print(F("CKOP "));
+    display.setCursor(15, 1);
     display.print(MotorSpeed);
-
-    display.setCursor(0, 2); // установка позиции курсора
-    display.print("CBE4A:");
-    display.setCursor(6, 2);
-    if (!SparkState)
-      display.print("OFF");
-    else
-      display.print("ON");
-    display.setCursor(10, 2);
-    display.print("TOK:");
+  }
+  display.setCursor(0, 2); // установка позиции курсора
+  display.print(F("CBE\3A"));
+  display.setCursor(6, 2);
+  if (!SparkRelayState)
+    display.print(F("OFF"));
+  else
+  {
+    TimeSpan sparkWorked = timenow - sparkStartTime;
+    display.print(F("ON "));
+    display.setCursor(11, 2);
+    display.print(F("TOK "));
     display.setCursor(15, 2);
     display.print(SparkCurrent);
-    display.setCursor(19, 2);
-    display.print("A");
-
-    display.setCursor(4, 3);
-    display.print("TEMP:");
-    display.setCursor(10, 3);
-    display.print(CurrentTemp);
+    display.setCursor(18, 2);
+    display.print(sparkWorked.totalseconds());
   }
-  //break;
-  /*case ModeAuto:
-      {
-        //get data first
-        ReadWeather();
-        display.setTextSize(1);  // установка размера шрифта
-        display.println("Humidity:");
-        display.setTextSize(2);  // установка размера шрифта
-        display.print(h);
-        display.println("%");
-        display.setTextSize(1);  // установка размера шрифта
-        display.println("Temperature:");
-        display.setTextSize(2);  // установка размера шрифта
-        display.print(t);
-        display.println((char)247);
-      }
-      break;
-       {
-      case ModeSetup:
-        display.setTextSize(2);  // установка размера шрифта
-        display.print("Lm:");
-        display.println(wflowrate);
-        display.print(" L:");
-        display.println(totalMilliLitres/1000);
-      }
-      break;*/
-///  default:
-  //  break;
-//  }
-  //display.display();
-}
 
+  display.setCursor(0, 3);
+  display.print(F("TEM\1EPAT\4PA"));
+  display.setCursor(12, 3);
+  display.print(CurrentTemp);
+
+  if (currentMode == ModeManual)
+  {
+    display.setCursor(16, 3);
+    display.print(F("    "));
+  }
+  else
+  {
+    display.setCursor(16, 3);
+    display.print(F("["));
+    display.print(neededTemp);
+    display.print(F("]"));
+  }
+
+  display.display();
+}
 void detectTemperature()
 {
-  byte i; 
-  byte present = 0;
+  byte i;
+  //byte present = 0;
   byte type_s;
   byte data[12];
   byte addr[8];
   //float celsius, fahrenheit;
-  
+
   if (millis() - lastUpdateTime > TEMP_UPDATE_TIME)
   {
-    Serial.println("Temp: Measuring...");
+    //Serial.println("Temp: Measuring...");
     lastUpdateTime = millis();
-    
-    if ( !ds.search(addr)) 
+
+    if (!ds.search(addr))
     {
-      Serial.println("Temp: No Sensor.");
-      Serial.println();
+      //Serial.println("Temp: No Sensor.");
+      //Serial.println();
       ds.reset_search();
       //delay(250);
       //CurrentTemp = 99.99;
       return;
     }
-  //  Serial.print("ROM =");
-    //for( i = 0; i < 8; i++) 
-   // {
-   //   Serial.write(' ');
-     // Serial.print(addr[i], HEX);
+    //  Serial.print("ROM =");
+    //for( i = 0; i < 8; i++)
+    // {
+    //   Serial.write(' ');
+    // Serial.print(addr[i], HEX);
     //}
-    if (OneWire::crc8(addr, 7) != addr[7]) 
+    if (OneWire::crc8(addr, 7) != addr[7])
     {
-      Serial.println("Temp: CRC is not valid!");
+      //Serial.println("Temp: CRC is not valid!");
       return;
     }
     Serial.println();
     // первый байт определяет чип
-    switch (addr[0]) 
+    switch (addr[0])
     {
-      case 0x10:
-     // Serial.println(" Chip = DS18S20"); // или более старый DS1820
+    case 0x10:
+      // Serial.println(" Chip = DS18S20"); // или более старый DS1820
       type_s = 1;
       break;
-      case 0x28:
-    //  Serial.println(" Chip = DS18B20");
+    case 0x28:
+      //  Serial.println(" Chip = DS18B20");
       type_s = 0;
       break;
-      case 0x22:
-    //  Serial.println(" Chip = DS1822");
+    case 0x22:
+      //  Serial.println(" Chip = DS1822");
       type_s = 0;
       break;
-      default:
-    //  Serial.println("Device is not a DS18x20 family device.");
+    default:
+      //  Serial.println("Device is not a DS18x20 family device.");
       CurrentTemp = 99.99;
       return;
     }
     ds.reset();
     ds.select(addr);
     ds.write(0x44); // начинаем преобразование, используя ds.write(0x44,1) с "паразитным" питанием
-    delay(1000); // 750 может быть достаточно, а может быть и не хватит
+    delay(1000);    // 750 может быть достаточно, а может быть и не хватит
     // мы могли бы использовать тут ds.depower(), но reset позаботится об этом
-    present = ds.reset();
+    //present =
+    ds.reset();
     ds.select(addr);
     ds.write(0xBE);
-  //  Serial.print(" Data = ");
-  //  Serial.print(present, HEX);
- //   Serial.print(" ");
-    for ( i = 0; i < 9; i++) 
+    //  Serial.print(" Data = ");
+    //  Serial.print(present, HEX);
+    //   Serial.print(" ");
+    for (i = 0; i < 9; i++)
     { // нам необходимо 9 байт
       data[i] = ds.read();
-   //   Serial.print(data[i], HEX);
-    //  Serial.print(" ");
+      //   Serial.print(data[i], HEX);
+      //  Serial.print(" ");
     }
-   // Serial.print(" CRC=");
-  //  Serial.print(OneWire::crc8(data, 8), HEX);
+    // Serial.print(" CRC=");
+    //  Serial.print(OneWire::crc8(data, 8), HEX);
     //Serial.println();
     // конвертируем данный в фактическую температуру
     // так как результат является 16 битным целым, его надо хранить в
     // переменной с типом данных "int16_t", которая всегда равна 16 битам,
     // даже если мы проводим компиляцию на 32-х битном процессоре
     int16_t raw = (data[1] << 8) | data[0];
-    if (type_s) 
+    if (type_s)
     {
       raw = raw << 3; // разрешение 9 бит по умолчанию
-      if (data[7] == 0x10) 
+      if (data[7] == 0x10)
       {
         raw = (raw & 0xFFF0) + 12 - data[6];
       }
-     } else 
-     {
-        byte cfg = (data[4] & 0x60);
-        // при маленьких значениях, малые биты не определены, давайте их обнулим
-        if (cfg == 0x00) 
-          raw = raw & ~7; // разрешение 9 бит, 93.75 мс
-        else if 
-          (cfg == 0x20) raw = raw & ~3; // разрешение 10 бит, 187.5 мс
-        else if 
-          (cfg == 0x40) raw = raw & ~1; // разрешение 11 бит, 375 мс
-        //// разрешение по умолчанию равно 12 бит, время преобразования - 750 мс
-      }
-      CurrentTemp = (float)raw / 16.0;
-      //fahrenheit = celsius * 1.8 + 32.0;
-      Serial.print("Temperature = ");
-      Serial.print(CurrentTemp);
-      Serial.println(" Celsius");
-     // Serial.print(fahrenheit);
-     // Serial.println(" Fahrenheit");
-     ds.depower();
-    }  
-}
-void MotorRelayOn() {
-    if(curMotorRelayState==false)
-    {
-      digitalWrite(MOTOR_RELAY_PIN, LOW);
-      curMotorRelayState = true;
-      tone(BEEP_PIN, 2000, 200);
-      delay(150);
-      tone(BEEP_PIN, 1800, 200);
-    } else
-    {
-      //already on
     }
-}
-void RelayOff()
-{
-    if(curMotorRelayState==true)
-    {
-      digitalWrite(MOTOR_RELAY_PIN, HIGH);
-      curMotorRelayState = false;
-      tone(BEEP_PIN, 1800, 200);
-      delay(150);
-      tone(BEEP_PIN, 2000, 200);
-    } 
     else
     {
-      //already off  
+      byte cfg = (data[4] & 0x60);
+      // при маленьких значениях, малые биты не определены, давайте их обнулим
+      if (cfg == 0x00)
+        raw = raw & ~7; // разрешение 9 бит, 93.75 мс
+      else if (cfg == 0x20)
+        raw = raw & ~3; // разрешение 10 бит, 187.5 мс
+      else if (cfg == 0x40)
+        raw = raw & ~1; // разрешение 11 бит, 375 мс
+      //// разрешение по умолчанию равно 12 бит, время преобразования - 750 мс
     }
-} 
+    CurrentTemp = raw / 16.0;
+    //fahrenheit = celsius * 1.8 + 32.0;
+    //Serial.print("Temperature = ");
+   // Serial.print(CurrentTemp);
+   // Serial.println(" Celsius");
+    // Serial.print(fahrenheit);
+    // Serial.println(" Fahrenheit");
+    ds.depower();
+  }
+}
 void ReadRTC()
 {
   if (!(millis() - lastRtcUpdateTime > RTC_UPDATE_TIME))
@@ -513,7 +851,7 @@ void ReadRTC()
   }
   lastRtcUpdateTime = millis();
   timenow = rtc.now();
-  sprintf(timeresult, "%02d:%02d", timenow.hour(),timenow.minute());
+  //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
   /* Serial.print(timenow.year(), DEC);
   Serial.print('/');
   Serial.print(timenow.month(), DEC);
@@ -536,30 +874,143 @@ void ReadACS()
     return;
   }
   lastAcsUpdateTime = millis();
-  SparkCurrent = (ACS.mA_DC()) / 1000; //read ignitor spark current
-  Serial.print("ACS: ");
-  Serial.println(SparkCurrent,DEC);
+  //ONLY CHECK IF Spark is on
+  if(!SparkRelayState)
+  {
+      return;
+  }
+  SparkCurrent = (ACS.mA_DC()) / 1000; //read spark DC in amperes
+  //Serial.print("ACS: ");
+  //Serial.println(SparkCurrent, DEC);
 }
-
-String msg;
-
-unsigned int period_check = 1000;
-unsigned long lastMs_check = 0;
-
-unsigned int period_nextScreen = 5000;
-unsigned long lastMs_nextScreen = 0;
-
-void loop()
+void CheckIgnition()
 {
-  ReadRTC();
-  //DisplayStatus();
-  detectTemperature(); // Определяем температуру от датчика DS18b20
-  ReadACS();//ток свечи
-  ReadKeyboard();
-
-   if (millis() - lastMs_check > period_check) 
-   {
-    lastMs_check = millis();
-      menu.update();
+  ReadACS();
+  return;
+  if(SparkCurrent<2)
+  {
+    IsAlarm = true; //no ignition!!!
+    IsNoIgnition = true;
+  }
+}
+void StartFuelFn()
+{
+    FuelRelayOn();
+    SparkRelayOn();
+    currentStartStage = StartIgnition;
+    dtStartIgnition = timenow;
+    delay(500); //make relay time to switch
+}
+void StartIgnitionFn()
+{
+    CheckIgnition();
+    TimeSpan sparkTime = timenow - dtStartIgnition;
+    //msg = sparkTime.totalseconds();
+    if (sparkTime.totalseconds() > 35)
+    {
+      MotorSpeed1();
+      delay(200);
+      MotorRelayOn();
+      delay(200);
+      tone(BEEP_PIN, 4000, 100);
+      delay(500);
+      currentStartStage = StartHalfMotor;
+      dtStartHalfMotor = timenow;
     }
+}
+void StartHalfMotorFn()
+{
+    CheckIgnition();
+    TimeSpan halfMotorTime = timenow - dtStartHalfMotor;
+    //msg = halfMotorTime.totalseconds();
+    if (halfMotorTime.totalseconds() > 35)
+    {
+      SparkRelayOff();
+      currentStartStage = StopIgnition;
+      dtStopIgnition = timenow;
+      tone(BEEP_PIN, 4000, 100);
+      delay(500);
+    }
+
+}
+void StopIgnitionFn()
+{
+    //TimeSpan stopIgnTime = timenow - dtStopIgnition;
+    if (IsFired) // we are heated already
+    {
+      MotorSpeed2();
+      currentStartStage = StartFullMotor;
+      delay(500);
+    }
+}
+void ProcessStartup()
+{
+  switch (currentStartStage)
+  {
+  case IdleToStart:
+    break;
+  case StartFuel:
+    StartFuelFn();
+    break;
+  case StartIgnition:
+    StartIgnitionFn();
+    break;
+  case StartHalfMotor:
+    StartHalfMotorFn();
+    break;
+  case StopIgnition:
+    StopIgnitionFn();
+    break;
+  case StartFullMotor:
+    break;
+  default:
+    break;
+  }
+}
+void ProcessShutDown()
+{
+  switch (currentStopStage)
+  {
+    case IdleToStart:
+      return;
+      break;
+    case StartFuel:
+      break;
+    default:
+    break;
+  }
+}
+void loop() //loop over all functions
+{
+
+  //check sensors
+  //Update the Bounce instance :
+  buttons[0].update();
+    // If it fell, flag the need to toggle the LED
+  if ( buttons[0].fell() ) 
+  {
+    IsFired = true;
+  }
+  if ( buttons[0].rose() ) 
+  {
+    IsFired = false;
+  }
+  buttons[1].update();
+  if(buttons[1].fell())
+  {
+    IsAlarm = true;
+  }
+
+  ReadRTC();
+  DisplayStatus();
+  ReadKeyboard();
+  if(IsAlarm)
+    StopDevice();
+  else
+  {
+    detectTemperature(); // Определяем температуру от датчика DS18b20
+    //ReadACS();           //ток свечи
+    ProcessStartup();
+    ProcessShutDown();
+  }
 }

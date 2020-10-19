@@ -1,0 +1,36 @@
+
+START:
+1. Open valve
+2. On Spark (always control current, if failed - ALARM STOP)
+3. Wait 30 seconds
+4. Turn motor 1 speed 
+5. Wait 30 seconds
+6. Turn off Spark
+7. Wait for Fire sensor (3-4 minuites) - if failed - ALARM STOP
+8. After 10 minutes - turn speed 2.
+9. Monitor For overheat, if happened - Turn off fuel. 
+
+IF LESS -30
+
+1. Open valve
+2. On Spark (always control current, if failed - ALARM STOP)
+3. Wait 30 seconds 
+4. Turn motor 1 speed 
+5. Wait 30 seconds
+7. Wait for Fire sensor (3-4 minuites) - if failed - ALARM STOP
+6. Turn off Spark
+8. After 10 minutes - turn speed 2.
+9. Monitor For overheat, if happened - Turn off fuel, wait minute, turn off motor.
+
+STOP:
+2. Close valve
+3. Wait until Fire sensor is off
+4. Off motor.
+
+ALARM STOP:
+2. Close valve
+3. Wait until Fire sensor is off
+4. Off motor.
+5. STOP cycling
+
+
