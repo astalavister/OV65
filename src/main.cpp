@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <OneWire.h>
+#include <DallasTemperature.h>
 #include <Keypad.h> //keypad lib
 #include "ACS712.h"
 #include "RTClib.h"
@@ -228,7 +229,7 @@ enum StartProcessStage
   StartFuel, 
   StartIgnition, //wait 30 seconds
   StartHalfMotor, //wait 30 seconds
-  StopIgnition, //wait for sensor
+  StopIgnition, //wait for FIRE sensor
   StartFullMotor 
 };
 DateTime dtStartIgnition;
@@ -286,10 +287,13 @@ long lastLcdUpdateTime = 20000;  // Переменная для хранения
 const int LCD_UPDATE_TIME = 500; // Определяем периодичность ПОКАЗА НА lcd
 
 //Temperarure sensor
-OneWire ds(DS_PIN);                 // Создаем объект OneWire для шины 1-Wire, с помощью которого будет осуществляться работа с датчиком
-int CurrentTemp = 99.99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
+OneWire oneWire(DS_PIN); // Создаем объект OneWire для шины 1-Wire, с помощью которого будет осуществляться работа с датчиком
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire);
+DeviceAddress insideThermometer, outsideThermometer;
+int CurrentTemp = 99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
 long lastUpdateTime = 20000;        // Переменная для хранения времени последнего считывания с датчика
-const int TEMP_UPDATE_TIME = 10000; // Определяем периодичность проверок
+const int TEMP_UPDATE_TIME = 15000; // Определяем периодичность проверок
 byte neededTemp = 20;
 
 char *timeresult = new char[7]{0, 0, 0, 0, 0, 0, 0};
@@ -300,7 +304,6 @@ int MotorSpeed = 1;
 
 bool SparkRelayState = false;
 int SparkCurrent = 0;
-//int ignitorMA = 0;
 
 bool FuelRelayState = false;
 
@@ -439,7 +442,7 @@ void keypadEvent(Key key)
     //Serial.print("HOLD...");
     //Serial.println(key.kchar);
     if (key.kchar == 'P')
-      resetFunc();
+       resetFunc();
     break;
   case RELEASED:
     //tone(BEEP_PIN, 1000, 330);
@@ -472,7 +475,7 @@ void keypadEvent(Key key)
     case 'M': //MENU
       break;
     case 'L': //LEFT
-      if (neededTemp >= 11)
+      if (neededTemp > 11 && currentMode == ModeAuto)
       {
         neededTemp--;
         SetTemp();
@@ -485,7 +488,7 @@ void keypadEvent(Key key)
       //menu.previous_screen();
       break;
     case 'R': //RIGHT
-      if (neededTemp < 30)
+      if (neededTemp < 30 && currentMode == ModeAuto)
       {
         neededTemp++;
         SetTemp();
@@ -533,7 +536,7 @@ void setup()
 {
   memory.init();
   //timeresult = (char*)malloc(6);
-  Serial.begin(115200);
+  //Serial.begin(115200);
     // initialize the lcd
   display.init();
   display.init();
@@ -571,6 +574,23 @@ void setup()
     // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
   }
   dtStart = rtc.now();
+  delay(300);
+  display.setCursor(1, 3);
+  display.print(F("Starting DS Sensor"));
+
+   // Start up the sensors library
+  sensors.begin();
+  if (!sensors.getAddress(insideThermometer, 0)) 
+  {
+    display.setCursor(3, 3);
+    display.print(F("NO DS Sensor!!!"));
+  //Serial.println("Couldn't find RTC");
+  //Serial.flush();
+    abort();
+  }
+
+ 
+
 
   //relays (used modules are on with LOW!!! state)
   pinMode(MOTOR_RELAY_PIN, INPUT_PULLUP);
@@ -630,11 +650,11 @@ void StopDevice()
   if(IsDeviceStopped)
     return;
   FuelRelayOff();
-    delay(300);
+    delay(500);
   MotorRelayOff();
-    delay(300);
+    delay(500);
   SparkRelayOff();
-    delay(300);
+    delay(500);
   IsDeviceStopped = true;
 } 
 String sparkTime="  ";
@@ -686,7 +706,7 @@ void DisplayStatus()
   display.print(F("MOTOP"));
   display.setCursor(6, 1);
   if (!curMotorRelayState)
-    display.print(F("OFF"));
+    display.print(F("OFF          "));
   else
   {
     display.print(F("ON "));
@@ -699,7 +719,7 @@ void DisplayStatus()
   display.print(F("CBE\3A"));
   display.setCursor(6, 2);
   if (!SparkRelayState)
-    display.print(F("OFF"));
+    display.print(F("OFF           "));
   else
   {
     TimeSpan sparkWorked = timenow - sparkStartTime;
@@ -732,115 +752,23 @@ void DisplayStatus()
 
   display.display();
 }
+
+byte i;
+//byte present = 0;
+byte type_s;
+byte data[12];
+byte addr[8];
+
 void detectTemperature()
 {
-  byte i;
-  //byte present = 0;
-  byte type_s;
-  byte data[12];
-  byte addr[8];
   //float celsius, fahrenheit;
-
   if (millis() - lastUpdateTime > TEMP_UPDATE_TIME)
   {
     //Serial.println("Temp: Measuring...");
     lastUpdateTime = millis();
-
-    if (!ds.search(addr))
-    {
-      //Serial.println("Temp: No Sensor.");
-      //Serial.println();
-      ds.reset_search();
-      //delay(250);
-      //CurrentTemp = 99.99;
-      return;
-    }
-    //  Serial.print("ROM =");
-    //for( i = 0; i < 8; i++)
-    // {
-    //   Serial.write(' ');
-    // Serial.print(addr[i], HEX);
-    //}
-    if (OneWire::crc8(addr, 7) != addr[7])
-    {
-      //Serial.println("Temp: CRC is not valid!");
-      return;
-    }
-    Serial.println();
-    // первый байт определяет чип
-    switch (addr[0])
-    {
-    case 0x10:
-      // Serial.println(" Chip = DS18S20"); // или более старый DS1820
-      type_s = 1;
-      break;
-    case 0x28:
-      //  Serial.println(" Chip = DS18B20");
-      type_s = 0;
-      break;
-    case 0x22:
-      //  Serial.println(" Chip = DS1822");
-      type_s = 0;
-      break;
-    default:
-      //  Serial.println("Device is not a DS18x20 family device.");
-      CurrentTemp = 99.99;
-      return;
-    }
-    ds.reset();
-    ds.select(addr);
-    ds.write(0x44); // начинаем преобразование, используя ds.write(0x44,1) с "паразитным" питанием
-    delay(1000);    // 750 может быть достаточно, а может быть и не хватит
-    // мы могли бы использовать тут ds.depower(), но reset позаботится об этом
-    //present =
-    ds.reset();
-    ds.select(addr);
-    ds.write(0xBE);
-    //  Serial.print(" Data = ");
-    //  Serial.print(present, HEX);
-    //   Serial.print(" ");
-    for (i = 0; i < 9; i++)
-    { // нам необходимо 9 байт
-      data[i] = ds.read();
-      //   Serial.print(data[i], HEX);
-      //  Serial.print(" ");
-    }
-    // Serial.print(" CRC=");
-    //  Serial.print(OneWire::crc8(data, 8), HEX);
-    //Serial.println();
-    // конвертируем данный в фактическую температуру
-    // так как результат является 16 битным целым, его надо хранить в
-    // переменной с типом данных "int16_t", которая всегда равна 16 битам,
-    // даже если мы проводим компиляцию на 32-х битном процессоре
-    int16_t raw = (data[1] << 8) | data[0];
-    if (type_s)
-    {
-      raw = raw << 3; // разрешение 9 бит по умолчанию
-      if (data[7] == 0x10)
-      {
-        raw = (raw & 0xFFF0) + 12 - data[6];
-      }
-    }
-    else
-    {
-      byte cfg = (data[4] & 0x60);
-      // при маленьких значениях, малые биты не определены, давайте их обнулим
-      if (cfg == 0x00)
-        raw = raw & ~7; // разрешение 9 бит, 93.75 мс
-      else if (cfg == 0x20)
-        raw = raw & ~3; // разрешение 10 бит, 187.5 мс
-      else if (cfg == 0x40)
-        raw = raw & ~1; // разрешение 11 бит, 375 мс
-      //// разрешение по умолчанию равно 12 бит, время преобразования - 750 мс
-    }
-    CurrentTemp = raw / 16.0;
-    //fahrenheit = celsius * 1.8 + 32.0;
-    //Serial.print("Temperature = ");
-   // Serial.print(CurrentTemp);
-   // Serial.println(" Celsius");
-    // Serial.print(fahrenheit);
-    // Serial.println(" Fahrenheit");
-    ds.depower();
+    sensors.requestTemperatures();
+    float tempC = sensors.getTempC(insideThermometer);
+    CurrentTemp = (int)tempC;
   }
 }
 void ReadRTC()
@@ -987,11 +915,11 @@ void loop() //loop over all functions
   //Update the Bounce instance :
   buttons[0].update();
     // If it fell, flag the need to toggle the LED
-  if ( buttons[0].fell() ) 
+  if ( buttons[0].fell()) 
   {
     IsFired = true;
   }
-  if ( buttons[0].rose() ) 
+  if ( buttons[0].rose()) 
   {
     IsFired = false;
   }
