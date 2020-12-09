@@ -227,7 +227,7 @@ enum StartProcessStage
 {
   IdleToStart,
   StartFuel, 
-  StartIgnition, //wait 30 seconds
+  StartIgnition, //wait 20 seconds
   StartHalfMotor, //wait 30 seconds
   StopIgnition, //wait for FIRE sensor
   StartFullMotor 
@@ -291,7 +291,7 @@ OneWire oneWire(DS_PIN); // Создаем объект OneWire для шины 
 // Pass our oneWire reference to Dallas Temperature. 
 DallasTemperature sensors(&oneWire);
 DeviceAddress insideThermometer, outsideThermometer;
-int CurrentTemp = 99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
+float CurrentTemp = 99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
 long lastUpdateTime = 20000;        // Переменная для хранения времени последнего считывания с датчика
 const int TEMP_UPDATE_TIME = 15000; // Определяем периодичность проверок
 byte neededTemp = 20;
@@ -405,11 +405,11 @@ void GetAutoMode()
   byte readData = memory.read(0x00);
   currentMode = readData == 0 ? ModeManual : ModeAuto;
 }
-void SetTemp()
+void SetNeededTemp()
 {
   memory.write(0x01, neededTemp);
 }
-void GetTemp()
+void GetNeededTemp()
 {
   neededTemp = memory.read(0x01);
 }
@@ -418,7 +418,7 @@ void StartHeater()
   if(currentStartStage==IdleToStart)
   {
     IsIdle = false;
-    //Serial.println("StartHeater()");
+    Serial.println("StartHeater()");
     currentStartStage = StartFuel;
   }
 }
@@ -427,7 +427,7 @@ void StopHeater()
   if(currentStopStage==HeaterStarted)
   {
     currentStopStage = StopFuel;
-    //Serial.println("StopHeater()");
+    Serial.println("StopHeater()");
   }
 }
 void keypadEvent(Key key)
@@ -478,7 +478,7 @@ void keypadEvent(Key key)
       if (neededTemp > 11 && currentMode == ModeAuto)
       {
         neededTemp--;
-        SetTemp();
+        SetNeededTemp();
         tone(BEEP_PIN, 2000, 100);
       }
       else
@@ -491,7 +491,7 @@ void keypadEvent(Key key)
       if (neededTemp < 30 && currentMode == ModeAuto)
       {
         neededTemp++;
-        SetTemp();
+        SetNeededTemp();
         tone(BEEP_PIN, 2000, 100);
       }
       else
@@ -633,7 +633,7 @@ void setup()
   //display.noBacklight();
   keypad.setDebounceTime(100);
   keypad.setHoldTime(5000);
-  GetTemp();
+  GetNeededTemp();
   GetAutoMode();
   delay(1000);
   display.clear();
@@ -768,7 +768,7 @@ void detectTemperature()
     lastUpdateTime = millis();
     sensors.requestTemperatures();
     float tempC = sensors.getTempC(insideThermometer);
-    CurrentTemp = (int)tempC;
+    CurrentTemp = tempC;
   }
 }
 void ReadRTC()
@@ -811,15 +811,27 @@ void ReadACS()
   //Serial.print("ACS: ");
   //Serial.println(SparkCurrent, DEC);
 }
-void CheckIgnition()
+bool CheckIgnition()
 {
   ReadACS();
-  return;
-  if(SparkCurrent<2)
+  if(SparkCurrent < 4)
   {
-    IsAlarm = true; //no ignition!!!
     IsNoIgnition = true;
+  } 
+  else 
+  {
+    IsNoIgnition = false;
   }
+
+ if(IsNoIgnition) //spark failed
+    {
+      IsAlarm = true; //no ignition!!!
+      currentStartStage = IdleToStart;
+      FuelRelayOff();
+      SparkRelayOff();
+      MotorRelayOff();
+    }
+    return !IsNoIgnition;
 }
 void StartFuelFn()
 {
@@ -831,10 +843,14 @@ void StartFuelFn()
 }
 void StartIgnitionFn()
 {
-    CheckIgnition();
+    
+    if(!CheckIgnition())
+      return;
+
     TimeSpan sparkTime = timenow - dtStartIgnition;
+
     //msg = sparkTime.totalseconds();
-    if (sparkTime.totalseconds() > 35)
+    if (sparkTime.totalseconds() > 20 )
     {
       MotorSpeed1();
       delay(200);
@@ -848,10 +864,11 @@ void StartIgnitionFn()
 }
 void StartHalfMotorFn()
 {
-    CheckIgnition();
+    if(!CheckIgnition())
+      return;
     TimeSpan halfMotorTime = timenow - dtStartHalfMotor;
     //msg = halfMotorTime.totalseconds();
-    if (halfMotorTime.totalseconds() > 35)
+    if (halfMotorTime.totalseconds() > 20)
     {
       SparkRelayOff();
       currentStartStage = StopIgnition;
@@ -937,7 +954,6 @@ void loop() //loop over all functions
   else
   {
     detectTemperature(); // Определяем температуру от датчика DS18b20
-    //ReadACS();           //ток свечи
     ProcessStartup();
     ProcessShutDown();
   }
