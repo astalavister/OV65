@@ -536,7 +536,7 @@ void setup()
 {
   memory.init();
   //timeresult = (char*)malloc(6);
-  //Serial.begin(115200);
+  Serial.begin(115200);
     // initialize the lcd
   display.init();
   display.init();
@@ -551,7 +551,7 @@ void setup()
   display.setCursor(3, 3);
   display.print(F("vasp@zabmail.ru"));
   delay(1000);
-  //Serial.println("Starting RTC...");
+  Serial.println("Starting RTC...");
   display.setCursor(3, 3);
   display.print(F("Starting RTC..."));
   //Serial.flush();
@@ -559,8 +559,8 @@ void setup()
   {
     display.setCursor(3, 3);
     display.print(F("NO RTC!!!"));
-    //Serial.println("Couldn't find RTC");
-    //Serial.flush();
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
     abort();
   }
   if (!rtc.isrunning())
@@ -919,7 +919,7 @@ void ProcessShutDown()
     case IdleToStart:
       return;
       break;
-    case StartFuel:
+    case StopFuel:
       break;
     default:
     break;
