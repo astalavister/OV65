@@ -7,8 +7,10 @@
 #include <Keypad.h> //keypad lib
 #include "ACS712.h"
 #include "RTClib.h"
-#include <I2C_EEPROM.h>
+//#include <I2C_EEPROM.h>
 #include <Bounce2.h>
+#include <avr/eeprom.h>
+
 
 byte bukva_B[8] = {
     B11110,
@@ -254,14 +256,16 @@ bool IsDeviceStopped = false;
 bool IsNoIgnition = false;
 bool IsFired = false;
 bool IsIdle = true;
+bool IgnoreSparkCurrent = false;
 
 String msg = "";
 
 //EEPROM
-I2C_EEPROM memory(0x50); // on RTC board
+//I2C_EEPROM memory(0x50); // on RTC board
 
 //RTC
-RTC_DS1307 rtc;
+//RTC_DS1307 rtc;
+//
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 DateTime dtStart;
 DateTime timenow;
@@ -313,9 +317,7 @@ void FuelRelayOn()
   if (FuelRelayState == false)
   {
     digitalWrite(FUEL_VALVE_RELAY_PIN, LOW);
-    tone(BEEP_PIN, 2000, 200);
-    delay(150);
-    tone(BEEP_PIN, 1800, 200);
+    tone(BEEP_PIN, 2800, 200);
     FuelRelayState = true;
   }
 }
@@ -325,8 +327,6 @@ void FuelRelayOff()
   if (FuelRelayState == true)
   {
     digitalWrite(FUEL_VALVE_RELAY_PIN, HIGH);
-    tone(BEEP_PIN, 1800, 200);
-    delay(150);
     tone(BEEP_PIN, 2000, 200);
     FuelRelayState = false;
   }
@@ -339,8 +339,7 @@ void SparkRelayOn()
   {
     digitalWrite(IGNITION_RELAY_PIN, LOW);
     tone(BEEP_PIN, 2000, 200);
-    delay(150);
-    tone(BEEP_PIN, 1800, 200);
+    delay(250);
     SparkRelayState = true;
     sparkStartTime = timenow;
   }
@@ -351,36 +350,12 @@ void SparkRelayOff()
   if (SparkRelayState == true)
   {
     digitalWrite(IGNITION_RELAY_PIN, HIGH);
-    tone(BEEP_PIN, 1800, 200);
-    delay(150);
-    tone(BEEP_PIN, 2000, 200);
+ //   tone(BEEP_PIN, 1800, 200);
+    tone(BEEP_PIN, 600, 200);
     SparkRelayState = false;
   }
 }
-void MotorRelayOn()
-{
-  //Serial.println("Motor ON");
-  if (curMotorRelayState == false)
-  {
-    digitalWrite(MOTOR_RELAY_PIN, LOW);
-    tone(BEEP_PIN, 2000, 200);
-    delay(150);
-    tone(BEEP_PIN, 1800, 200);
-    curMotorRelayState = true;
-  }
-}
-void MotorRelayOff()
-{
-  //Serial.println("Motor OFF");
-  if (curMotorRelayState == true)
-  {
-    digitalWrite(MOTOR_RELAY_PIN, HIGH);
-    tone(BEEP_PIN, 1800, 200);
-    delay(150);
-    tone(BEEP_PIN, 2000, 200);
-    curMotorRelayState = false;
-  }
-}
+
 void MotorSpeed2()
 {
   //Serial.println("Motor Speed 2");
@@ -396,22 +371,47 @@ void MotorSpeed1()
     tone(BEEP_PIN, 1800, 200);
     MotorSpeed = 1;
 }
+void MotorRelayOn()
+{
+  //Serial.println("Motor ON");
+  if (curMotorRelayState == false)
+  {
+    digitalWrite(MOTOR_RELAY_PIN, LOW);
+    tone(BEEP_PIN, 1000, 200);
+    curMotorRelayState = true;
+  }
+}
+void MotorRelayOff()
+{
+  //Serial.println("Motor OFF");
+  if (curMotorRelayState == true)
+  {
+    MotorSpeed1();//off speed relay when idle
+    digitalWrite(MOTOR_RELAY_PIN, HIGH);
+    tone(BEEP_PIN, 600, 200);
+    curMotorRelayState = false;
+  }
+}
+
+uint8_t EEMEM modebyteAddr;
+uint8_t EEMEM tempbyteAddr;
+
 void SetAutoMode()
 {
-  memory.write(0x00, currentMode == ModeManual ? 0x00 : 0x01);
+  eeprom_write_byte(&modebyteAddr, currentMode == ModeManual ? 0x00 : 0x01);
 }
 void GetAutoMode()
 {
-  byte readData = memory.read(0x00);
+  byte readData = eeprom_read_byte(&modebyteAddr);
   currentMode = readData == 0 ? ModeManual : ModeAuto;
 }
 void SetNeededTemp()
 {
-  memory.write(0x01, neededTemp);
+ eeprom_write_byte(&tempbyteAddr, neededTemp);
 }
 void GetNeededTemp()
 {
-  neededTemp = memory.read(0x01);
+  neededTemp = eeprom_read_byte(&tempbyteAddr);
 }
 void StartHeater()
 {
@@ -424,10 +424,13 @@ void StartHeater()
 }
 void StopHeater()
 {
-  if(currentStopStage==HeaterStarted)
+  if(currentStopStage==IdleStopped)
   {
     currentStopStage = StopFuel;
     Serial.println("StopHeater()");
+  } else
+  {
+    Serial.println("StopHeater() - Stopping Already");
   }
 }
 void keypadEvent(Key key)
@@ -473,7 +476,16 @@ void keypadEvent(Key key)
       }
       break;
     case 'M': //MENU
-      break;
+    if(!IgnoreSparkCurrent)
+    {
+      IgnoreSparkCurrent = true;
+      tone(BEEP_PIN, 300, 200);
+      delay(200);
+      tone(BEEP_PIN, 200, 200);
+      delay(200);
+      tone(BEEP_PIN, 300, 200);
+    }
+    break;
     case 'L': //LEFT
       if (neededTemp > 11 && currentMode == ModeAuto)
       {
@@ -502,15 +514,14 @@ void keypadEvent(Key key)
     case 'P': //POWER
       if (currentMode == ModeManual)
       {
-        if(IsIdle)
+        if(currentStartStage==IdleToStart && currentStopStage==IdleStopped)
         {
           tone(BEEP_PIN, 900, 100);
           StartHeater();
-        } else
-        {
-          tone(BEEP_PIN, 900, 100);
-          StopHeater();
+          return;
         }
+        tone(BEEP_PIN, 600, 200);
+        StopHeater();
       }
       break;
     default: //all other keys
@@ -534,11 +545,9 @@ void ReadKeyboard()
 }
 void setup()
 {
-  memory.init();
-  //timeresult = (char*)malloc(6);
+   //timeresult = (char*)malloc(6);
   Serial.begin(115200);
     // initialize the lcd
-  display.init();
   display.init();
   // Print a message to the LCD.
   display.backlight();
@@ -550,35 +559,14 @@ void setup()
   display.print(F("(c) 2020"));
   display.setCursor(3, 3);
   display.print(F("vasp@zabmail.ru"));
-  delay(1000);
-  Serial.println("Starting RTC...");
-  display.setCursor(3, 3);
-  display.print(F("Starting RTC..."));
-  //Serial.flush();
-  if (!rtc.begin())
-  {
-    display.setCursor(3, 3);
-    display.print(F("NO RTC!!!"));
-    Serial.println("Couldn't find RTC");
-    Serial.flush();
-    abort();
-  }
-  if (!rtc.isrunning())
-  {
-    //Serial.println("RTC is NOT running, let's set the time!");
-    // When time needs to be set on a new device, or after a power loss, the
-    // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2014 at 3am you would call:
-    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-  }
-  dtStart = rtc.now();
-  delay(300);
+    
+  dtStart = DateTime(F(__DATE__), F(__TIME__));
+  
+  timenow = dtStart;
+  
   display.setCursor(1, 3);
   display.print(F("Starting DS Sensor"));
-
-   // Start up the sensors library
+  // Start up the sensors library
   sensors.begin();
   if (!sensors.getAddress(insideThermometer, 0)) 
   {
@@ -586,11 +574,7 @@ void setup()
     display.print(F("NO DS Sensor!!!"));
   //Serial.println("Couldn't find RTC");
   //Serial.flush();
-    abort();
   }
-
- 
-
 
   //relays (used modules are on with LOW!!! state)
   pinMode(MOTOR_RELAY_PIN, INPUT_PULLUP);
@@ -647,8 +631,6 @@ void setup()
 }
 void StopDevice()
 {
-  if(IsDeviceStopped)
-    return;
   FuelRelayOff();
     delay(500);
   MotorRelayOff();
@@ -695,6 +677,36 @@ void DisplayStatus()
     display.print(F("ABTOMAT "));
   }
   display.print(msg);
+
+
+  
+
+
+  if(currentStartStage==IdleToStart && currentStopStage == IdleStopped) //we are not running
+  {
+    display.setCursor(8, 0); // установка позиции курсора
+    display.print(F("IDLE "));
+  }
+  else if(currentStopStage != IdleStopped) //we are not running
+  {
+    display.setCursor(8, 0); // установка позиции курсора
+    display.print(F("STOP "));
+  }else if(currentStartStage!=IdleToStart)
+  {
+    display.setCursor(8, 0); // установка позиции курсора
+    display.print(F("START"));
+  }
+
+  display.setCursor(14, 0); // установка позиции курсора
+  if (FuelRelayState == false)
+  {
+      display.print(F(" "));
+  }
+  else
+  {
+      display.print(F("F"));
+  }
+
   //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
   display.setCursor(17, 0); // установка позиции курсора
   if(IsFired)
@@ -759,6 +771,8 @@ byte type_s;
 byte data[12];
 byte addr[8];
 
+
+
 void detectTemperature()
 {
   //float celsius, fahrenheit;
@@ -771,6 +785,9 @@ void detectTemperature()
     CurrentTemp = tempC;
   }
 }
+
+TimeSpan onesec = TimeSpan(1);
+
 void ReadRTC()
 {
   if (!(millis() - lastRtcUpdateTime > RTC_UPDATE_TIME))
@@ -778,22 +795,21 @@ void ReadRTC()
     return;
   }
   lastRtcUpdateTime = millis();
-  timenow = rtc.now();
+  timenow = timenow + onesec;
   //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
-  /* Serial.print(timenow.year(), DEC);
+  /*Serial.print(timenow.year(), DEC);
   Serial.print('/');
   Serial.print(timenow.month(), DEC);
   Serial.print('/');
   Serial.print(timenow.day(), DEC);
-  Serial.print(" (");
-  Serial.print(daysOfTheWeek[timenow.dayOfTheWeek()]);
-  Serial.print(") ");
+  Serial.print(" ");
   Serial.print(timenow.hour(), DEC);
   Serial.print(':');
   Serial.print(timenow.minute(), DEC);
   Serial.print(':');
   Serial.print(timenow.second(), DEC);
-  Serial.println(); */
+  Serial.println();
+  */
 }
 void ReadACS()
 {
@@ -816,7 +832,8 @@ bool CheckIgnition()
   ReadACS();
   if(SparkCurrent < 4)
   {
-    IsNoIgnition = true;
+    if(!IgnoreSparkCurrent)
+        IsNoIgnition = true; 
   } 
   else 
   {
@@ -890,6 +907,10 @@ void StopIgnitionFn()
 }
 void ProcessStartup()
 {
+  if(currentStopStage!=IdleStopped) //we are stopping
+  {
+    return;
+  }
   switch (currentStartStage)
   {
   case IdleToStart:
@@ -912,14 +933,41 @@ void ProcessStartup()
     break;
   }
 }
+
+DateTime timeFreeRun;
 void ProcessShutDown()
 {
+  if(currentStartStage==IdleToStart) //we are not running
+  {
+    return;
+  }
   switch (currentStopStage)
   {
-    case IdleToStart:
-      return;
+    break;
+    case IdleStopped:
       break;
     case StopFuel:
+      FuelRelayOff();
+      SparkRelayOff();
+      MotorRelayOn();
+      MotorSpeed2();
+      timeFreeRun = timenow;
+      currentStopStage = WaitToStopFire;
+      currentStartStage = StartFullMotor;
+      break;
+    case WaitToStopFire:
+      if(!IsFired)
+      {
+        TimeSpan secs = timenow - timeFreeRun;
+          if(secs.totalseconds() > 59)
+            currentStopStage = StopMotor;
+      }
+      break;
+  case StopMotor:
+      MotorRelayOff();
+      IsIdle = true;
+      currentStopStage = IdleStopped;
+      currentStartStage= IdleToStart;
       break;
     default:
     break;
@@ -927,7 +975,6 @@ void ProcessShutDown()
 }
 void loop() //loop over all functions
 {
-
   //check sensors
   //Update the Bounce instance :
   buttons[0].update();
@@ -940,6 +987,7 @@ void loop() //loop over all functions
   {
     IsFired = false;
   }
+
   buttons[1].update();
   if(buttons[1].fell())
   {
