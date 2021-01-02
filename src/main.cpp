@@ -9,7 +9,7 @@
 #include "RTClib.h"
 //#include <I2C_EEPROM.h>
 #include <Bounce2.h>
-#include <avr/eeprom.h>
+#include <eeprom.h>
 
 
 byte bukva_B[8] = {
@@ -203,21 +203,35 @@ byte bukva_Ya[8] = {
     B00000,
 }; // Буква "Я"
 
-#define DS_PIN A0            // DS18B20 data pin
-#define CURRENT_IGN_PIN A1   //Current meter pin
+#define DS_PIN A6            // DS18B20 data pin //34ESP
+#define CURRENT_IGN_PIN A7   //Current meter pin //35ESP
 
 #define NUM_BUTTONS 2
-const uint8_t BUTTON_PINS[NUM_BUTTONS] = {A2, A3};
+const uint8_t BUTTON_PINS[NUM_BUTTONS] = {A4, A5}; //32-33ESP
 Bounce * buttons = new Bounce[NUM_BUTTONS];
+
 //#define TEMP_WORK_PIN A2     //Working temp sensor
 //#define TEMP_OVERHEAT_PIN A3 //Overheat sensor pin
 
 #define BEEP_PIN 12              //Beeper
 #define BEEP_PIN_GROUND 13       //Beeper Ground
-#define MOTOR_RELAY_PIN 8       //motor on/off relay
-#define MOTOR_SPEED_RELAY_PIN 9 //motor speed relay (1/2)
-#define FUEL_VALVE_RELAY_PIN 10   // fuel valve relay
-#define IGNITION_RELAY_PIN 11     // ingition relay
+
+#define MOTOR_RELAY_PIN A18       //motor on/off relay //25
+#define MOTOR_SPEED_RELAY_PIN A19 //motor speed relay (1/2) //26
+#define FUEL_VALVE_RELAY_PIN A17   // fuel valve relay //27
+#define IGNITION_RELAY_PIN A16     // ingition relay //14
+
+
+///KEYBOARD
+const byte ROWS = 1; // строки
+const byte COLS = 5; // столбца
+char keys[ROWS][COLS] = {{'A', 'M', 'L', 'R', 'P'}};
+byte rowPins[ROWS] = {A14};             // подключить к выводам строк клавиатуры //IO13
+byte colPins[COLS] = {A15, A13, A10, A12, A11}; // подключить к выводам столбцов клавиатуры //IO12,IO15,IO4,IO2,IO0
+
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+
 
 enum WorkMode
 {
@@ -277,14 +291,6 @@ ACS712 ACS(CURRENT_IGN_PIN, 5.0, 1023, 66); //30 AMPERS sensor
 long lastAcsUpdateTime;
 const int ACS_UPDATE_TIME = 1000; // Определяем периодичность проверок
 
-///KEYBOARD
-const byte ROWS = 1; // строки
-const byte COLS = 5; // столбца
-char keys[ROWS][COLS] = {{'A', 'M', 'L', 'R', 'P'}};
-byte rowPins[ROWS] = {3};             // подключить к выводам строк клавиатуры
-byte colPins[COLS] = {7, 6, 5, 2, 4}; // подключить к выводам столбцов клавиатуры
-Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
-
 // set the LCD address to 0x27 for a 20 chars and 4 line display
 LiquidCrystal_I2C display(0x27, 20, 4);
 long lastLcdUpdateTime = 20000;  // Переменная для хранения времени ПОКАЗА НА lcd
@@ -301,7 +307,7 @@ const int TEMP_UPDATE_TIME = 15000; // Определяем периодично
 byte neededTemp = 20;
 
 char *timeresult = new char[7]{0, 0, 0, 0, 0, 0, 0};
-void (*resetFunc)(void) = 0; //объявляем функцию reset с адресом 0
+//void (*resetFunc)(void) = 0; //объявляем функцию reset с адресом 0
 
 bool curMotorRelayState = false;
 int MotorSpeed = 1;
@@ -317,7 +323,7 @@ void FuelRelayOn()
   if (FuelRelayState == false)
   {
     digitalWrite(FUEL_VALVE_RELAY_PIN, LOW);
-    tone(BEEP_PIN, 2800, 200);
+    //tone(BEEP_PIN, 2800, 200);
     FuelRelayState = true;
   }
 }
@@ -327,7 +333,7 @@ void FuelRelayOff()
   if (FuelRelayState == true)
   {
     digitalWrite(FUEL_VALVE_RELAY_PIN, HIGH);
-    tone(BEEP_PIN, 2000, 200);
+   // tone(BEEP_PIN, 2000, 200);
     FuelRelayState = false;
   }
 }
@@ -338,7 +344,7 @@ void SparkRelayOn()
   if (SparkRelayState == false)
   {
     digitalWrite(IGNITION_RELAY_PIN, LOW);
-    tone(BEEP_PIN, 2000, 200);
+  //  tone(BEEP_PIN, 2000, 200);
     delay(250);
     SparkRelayState = true;
     sparkStartTime = timenow;
@@ -351,7 +357,7 @@ void SparkRelayOff()
   {
     digitalWrite(IGNITION_RELAY_PIN, HIGH);
  //   tone(BEEP_PIN, 1800, 200);
-    tone(BEEP_PIN, 600, 200);
+ //   tone(BEEP_PIN, 600, 200);
     SparkRelayState = false;
   }
 }
@@ -360,7 +366,7 @@ void MotorSpeed2()
 {
   //Serial.println("Motor Speed 2");
   digitalWrite(MOTOR_SPEED_RELAY_PIN, LOW);
-  tone(BEEP_PIN, 2000, 200);
+ // tone(BEEP_PIN, 2000, 200);
   MotorSpeed = 2;
 
 }
@@ -368,7 +374,7 @@ void MotorSpeed1()
 {
     //Serial.println("Motor Speed 1");
     digitalWrite(MOTOR_SPEED_RELAY_PIN, HIGH);
-    tone(BEEP_PIN, 1800, 200);
+   // tone(BEEP_PIN, 1800, 200);
     MotorSpeed = 1;
 }
 void MotorRelayOn()
@@ -377,7 +383,7 @@ void MotorRelayOn()
   if (curMotorRelayState == false)
   {
     digitalWrite(MOTOR_RELAY_PIN, LOW);
-    tone(BEEP_PIN, 1000, 200);
+  //  tone(BEEP_PIN, 1000, 200);
     curMotorRelayState = true;
   }
 }
@@ -388,30 +394,36 @@ void MotorRelayOff()
   {
     MotorSpeed1();//off speed relay when idle
     digitalWrite(MOTOR_RELAY_PIN, HIGH);
-    tone(BEEP_PIN, 600, 200);
+  //  tone(BEEP_PIN, 600, 200);
     curMotorRelayState = false;
   }
 }
 
-uint8_t EEMEM modebyteAddr;
-uint8_t EEMEM tempbyteAddr;
+//uint8_t EEMEM modebyteAddr;
+//uint8_t EEMEM tempbyteAddr;
 
 void SetAutoMode()
 {
-  eeprom_write_byte(&modebyteAddr, currentMode == ModeManual ? 0x00 : 0x01);
+  EEPROM.writeByte(0, currentMode == ModeManual ? 0x00 : 0x01);
+  //eeprom_write_byte(&modebyteAddr, currentMode == ModeManual ? 0x00 : 0x01);
 }
 void GetAutoMode()
 {
-  byte readData = eeprom_read_byte(&modebyteAddr);
+  //byte readData = eeprom_read_byte(&modebyteAddr);
+
+  byte readData = EEPROM.readByte(0);
+
   currentMode = readData == 0 ? ModeManual : ModeAuto;
 }
 void SetNeededTemp()
 {
- eeprom_write_byte(&tempbyteAddr, neededTemp);
+  EEPROM.writeByte(1,neededTemp);
+ //eeprom_write_byte(&tempbyteAddr, neededTemp);
 }
 void GetNeededTemp()
 {
-  neededTemp = eeprom_read_byte(&tempbyteAddr);
+  //neededTemp = eeprom_read_byte(&tempbyteAddr);
+  neededTemp = EEPROM.readByte(1);
 }
 void StartHeater()
 {
@@ -445,7 +457,7 @@ void keypadEvent(Key key)
     //Serial.print("HOLD...");
     //Serial.println(key.kchar);
     if (key.kchar == 'P')
-       resetFunc();
+      // resetFunc();
     break;
   case RELEASED:
     //tone(BEEP_PIN, 1000, 330);
@@ -462,14 +474,14 @@ void keypadEvent(Key key)
     case 'A': //AUTO
       if (currentMode == ModeManual && IsIdle)
       {
-        tone(BEEP_PIN, 550, 100);
+    //    tone(BEEP_PIN, 550, 100);
         currentMode = ModeAuto;
         SetAutoMode();
         break;
       }
       if(currentMode == ModeAuto)
       {
-        tone(BEEP_PIN, 1550, 100);
+    //    tone(BEEP_PIN, 1550, 100);
         currentMode = ModeManual;
         SetAutoMode();
         break;
@@ -479,11 +491,11 @@ void keypadEvent(Key key)
     if(!IgnoreSparkCurrent)
     {
       IgnoreSparkCurrent = true;
-      tone(BEEP_PIN, 300, 200);
+   //   tone(BEEP_PIN, 300, 200);
       delay(200);
-      tone(BEEP_PIN, 200, 200);
+     // tone(BEEP_PIN, 200, 200);
       delay(200);
-      tone(BEEP_PIN, 300, 200);
+ //     tone(BEEP_PIN, 300, 200);
     }
     break;
     case 'L': //LEFT
@@ -491,11 +503,11 @@ void keypadEvent(Key key)
       {
         neededTemp--;
         SetNeededTemp();
-        tone(BEEP_PIN, 2000, 100);
+   //     tone(BEEP_PIN, 2000, 100);
       }
       else
       {
-        tone(BEEP_PIN, 800, 100);
+     //   tone(BEEP_PIN, 800, 100);
       }
       //menu.previous_screen();
       break;
@@ -504,11 +516,11 @@ void keypadEvent(Key key)
       {
         neededTemp++;
         SetNeededTemp();
-        tone(BEEP_PIN, 2000, 100);
+   //     tone(BEEP_PIN, 2000, 100);
       }
       else
       {
-        tone(BEEP_PIN, 800, 100);
+  //      tone(BEEP_PIN, 800, 100);
       }
       break;
     case 'P': //POWER
@@ -516,11 +528,11 @@ void keypadEvent(Key key)
       {
         if(currentStartStage==IdleToStart && currentStopStage==IdleStopped)
         {
-          tone(BEEP_PIN, 900, 100);
+    //      tone(BEEP_PIN, 900, 100);
           StartHeater();
           return;
         }
-        tone(BEEP_PIN, 600, 200);
+ //       tone(BEEP_PIN, 600, 200);
         StopHeater();
       }
       break;
@@ -572,7 +584,7 @@ void setup()
   {
     display.setCursor(3, 3);
     display.print(F("NO DS Sensor!!!"));
-  //Serial.println("Couldn't find RTC");
+    Serial.println("NO DS Sensor!!!");
   //Serial.flush();
   }
 
@@ -609,9 +621,9 @@ void setup()
   pinMode(BEEP_PIN_GROUND, OUTPUT);
   digitalWrite(BEEP_PIN_GROUND, LOW);
   //пищим
-  tone(BEEP_PIN, 1000, 100);
-  delay(250);
-  tone(BEEP_PIN, 1500, 100);
+  //tone(BEEP_PIN, 1000, 100);
+//  delay(250);
+ // tone(BEEP_PIN, 1500, 100);
   //display.cursor();
   //display.blink();
   //display.noBacklight();
@@ -657,7 +669,7 @@ void DisplayStatus()
   if(IsAlarm)
   {
     display.clear();
-    tone(BEEP_PIN, 500, 100);
+  //  tone(BEEP_PIN, 500, 100);
     StopDevice();
     display.setCursor(3, 1); // установка позиции курсора
     if(IsNoIgnition)
@@ -797,7 +809,7 @@ void ReadRTC()
   lastRtcUpdateTime = millis();
   timenow = timenow + onesec;
   //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
-  /*Serial.print(timenow.year(), DEC);
+  Serial.print(timenow.year(), DEC);
   Serial.print('/');
   Serial.print(timenow.month(), DEC);
   Serial.print('/');
@@ -809,7 +821,7 @@ void ReadRTC()
   Serial.print(':');
   Serial.print(timenow.second(), DEC);
   Serial.println();
-  */
+  
 }
 void ReadACS()
 {
@@ -873,7 +885,7 @@ void StartIgnitionFn()
       delay(200);
       MotorRelayOn();
       delay(200);
-      tone(BEEP_PIN, 4000, 100);
+     // tone(BEEP_PIN, 4000, 100);
       delay(500);
       currentStartStage = StartHalfMotor;
       dtStartHalfMotor = timenow;
@@ -890,7 +902,7 @@ void StartHalfMotorFn()
       SparkRelayOff();
       currentStartStage = StopIgnition;
       dtStopIgnition = timenow;
-      tone(BEEP_PIN, 4000, 100);
+    //  tone(BEEP_PIN, 4000, 100);
       delay(500);
     }
 
@@ -993,7 +1005,6 @@ void loop() //loop over all functions
   {
     IsAlarm = true;
   }
-
   ReadRTC();
   DisplayStatus();
   ReadKeyboard();
