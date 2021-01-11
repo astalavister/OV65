@@ -56,8 +56,8 @@ char cstr[128]; //temp buf
 
 AsyncMqttClient mqttClient;
 
-TimerHandle_t mqttReconnectTimer;
-TimerHandle_t wifiReconnectTimer;
+//TimerHandle_t mqttReconnectTimer;
+//TimerHandle_t wifiReconnectTimer;
 
 
 EEPROMClass eData("eeprom0", 0x500);
@@ -70,7 +70,7 @@ const int   daylightOffset_sec = 0;
 DateTime dtStartIgnition;
 DateTime dtStartHalfMotor;
 DateTime dtStopIgnition;
-DateTime sparkStartTime;
+DateTime glowplugStartTime;
 struct tm * timenow_tm = new tm();
 DateTime  timeFreeRun;
 DateTime timenow;
@@ -78,26 +78,27 @@ DateTime timenow;
 
 int wifiConnectedCount = 0; //wifi connected times counter
 
-String sparkTime="  ";
+String glowplugTime="  ";
 
 bool timeAdjusted = false;
 
-//By default, on ESP32 boards, the SDA pin is 21 . SCL pin is 22
 #define DHT_PIN 23 //GPIO23 //20 not useable 
 //Temperarure sensor
 //#define DHTTYPE DHT21   // AM2301 
 DHT dht(DHT_PIN,AM2301);
-float CurrentTemp = -10.99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
-float CurrentHum = 99.99;            // Глобальная переменная для хранения значение температуры с датчика DS18B20
+double CurrentTemp = 0;            
+double CurrentHum = 0;
 byte neededTemp = 20;
-//#define DS_PIN A7            // DS18B20 data pin //35ESP
-#define CURRENT_IGN_PIN 34   //Current meter pin //34ESP
+
+#define CURRENT_IGN_PIN 34   //Current meter pin
+
 //#define BEEP_PIN 12              //Beeper
 //#define BEEP_PIN_GROUND 13       //Beeper Ground
-#define MOTOR_RELAY_PIN 15       //motor on/off relay //25
-#define MOTOR_SPEED_RELAY_PIN 19 //motor speed relay (1/2) //26
+
+#define MOTOR_RELAY_PIN 15       //motor on/off relay
+#define MOTOR_SPEED_RELAY_PIN 19 //motor speed relay (1/2) 
 #define FUEL_VALVE_RELAY_PIN 0   // fuel valve relay 
-#define IGNITION_RELAY_PIN 16     // ingition relay //14
+#define IGNITION_RELAY_PIN 16     // ingition relay 
 ///KEYBOARD
 #define BUTTON_A_PIN 32     
 #define BUTTON_M_PIN 33
@@ -166,44 +167,32 @@ bool IsDeviceStopped = false;
 bool IsNoIgnition = false;
 bool IsFired = false;
 bool IsIdle = true;
-bool IgnoreSparkCurrent = true;
+bool IgnoreGlowPlugCurrent = true;
 
+//By default, on ESP32 boards, the SDA pin is 21 . SCL pin is 22
 // set the LCD address to 0x27 for a 20 chars and 4 line display
 LiquidCrystal_I2C display(0x27, 20, 4);
-long lastLcdUpdateTime = 20000;  // Переменная для хранения времени ПОКАЗА НА lcd
-const int LCD_UPDATE_TIME = 500; // Определяем периодичность ПОКАЗА НА lcd
 
 bool curMotorRelayState = false;
 int MotorSpeed = 1;
-bool SparkRelayState = false;
-int SparkCurrent = 0;
+bool GlowPlugRelayState = false;
+int GlowPlugCurrent = 0;
 bool FuelRelayState = false;
 
-void connectToWifi() {
-  Serial.println("Connecting to Wi-Fi...");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-}
-
-void connectToMqtt() {
-  Serial.println("Connecting to MQTT...");
-  mqttClient.connect();
-}
-
-void WiFiEvent(WiFiEvent_t event) {
+void WiFiEvent(WiFiEvent_t event)
+{
     Serial.printf("[WiFi-event] event: %d\n", event);
-    switch(event) {
+    switch(event) 
+    {
     case SYSTEM_EVENT_STA_GOT_IP:
         Serial.println("WiFi connected");
         Serial.println("IP address: ");
         Serial.println(WiFi.localIP());
         randomSeed(micros());
         wifiConnectedCount++;
-        connectToMqtt();
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
         Serial.println("WiFi lost connection");
-        xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
-		    xTimerStart(wifiReconnectTimer, 0);
         break;
     }
 }
@@ -212,34 +201,18 @@ void onMqttConnect(bool sessionPresent) {
   Serial.println("Connected to MQTT.");
   Serial.print("Session present: ");
   Serial.println(sessionPresent);
-  
- // mqttClient.subscribe("iot/OV65/temperature", 2);
-//  mqttClient.subscribe("iot/OV65/humidity", 2);
+
   mqttClient.subscribe("iot/OV65/startheater", 2);
   mqttClient.subscribe("iot/OV65/stopheater", 2);
   mqttClient.subscribe("iot/OV65/reset", 2);
   mqttClient.subscribe("iot/OV65/switchmode", 2);
-
-  //Serial.print("Subscribing at QoS 2, packetId: ");
-  //Serial.println(packetIdSub);
-  //mqttClient.publish("test/lol", 0, true, "test 1");
-  //Serial.println("Publishing at QoS 0");
- // uint16_t packetIdPub2 = mqttClient.publish("iot/OV65/humidity", 1, true, "33.3");
-    //Serial.print("Publishing at QoS 1, packetId: ");
-  //Serial.println(packetIdPub1);
-  //uint16_t packetIdPub2 = mqttClient.publish("test/lol", 2, true, "test 3");
- // Serial.print("Publishing at QoS 2, packetId: ");
- // Serial.println(packetIdPub2);
-
+  mqttClient.subscribe("iot/OV65/actions/#", 2);
   mqttPrintStatus();
 }
 
-void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
+void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) 
+{
   Serial.println("Disconnected from MQTT.");
-  if (WiFi.isConnected())
-   {
-    xTimerStart(mqttReconnectTimer, 0);
-   }
 }
 
 void onMqttSubscribe(uint16_t packetId, uint8_t qos) {
@@ -275,10 +248,9 @@ void mqttUpdateTime()
 }
 
 
-void mqttPrintStatus(){
-
+void mqttPrintStatus()
+{
   Serial.println("mqttPrintStatus()...");
-
   if(mqttClient.connected())
   {
   
@@ -305,10 +277,10 @@ void mqttPrintStatus(){
     {
       mqttClient.publish("iot/OV65/fuelValve", 1, true, "Открыт");
     }
-    sprintf(cstr, "%d", SparkCurrent);
+    sprintf(cstr, "%d", GlowPlugCurrent);
     mqttClient.publish("iot/OV65/ignitionCurrent", 1, true, cstr);
-    //spark
-    if (SparkRelayState == false)
+    //glowplug
+    if (GlowPlugRelayState == false)
     {
       mqttClient.publish("iot/OV65/ignition", 1, true, "Откл");
     } else
@@ -357,7 +329,6 @@ void ReadButtons()
 {
   //Update the Bounce instance :
   buttons[0].update();
-    // If it fell, flag the need to toggle the LED
   if ( buttons[0].fell()) 
   {
     IsFired = true;
@@ -378,6 +349,7 @@ void ReadButtons()
         mqttClient.publish("iot/OV65/heatSensor", 1, true, "Холодный");
     }
   }
+
   buttons[1].update();
   if(buttons[1].fell())
   {
@@ -427,9 +399,10 @@ void showDate(const char* txt, const DateTime& dt) {
 
     Serial.println();
 }
+
 //weather data reading task
-float LastTemp = 0;
-float LastHumidity = 0;
+double LastTemp = 0;
+double LastHumidity = 0;
 void weatherTask( void * pvParameters )
 {
  dht.begin();
@@ -463,9 +436,9 @@ void weatherTask( void * pvParameters )
 
     // Reading temperature or humidity takes about 250 milliseconds!
     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-    float h = dht.readHumidity();
+    double h = dht.readHumidity();
     // Read temperature as Celsius (the default)
-    float t = dht.readTemperature();
+    double t = dht.readTemperature();
     // Check if any reads failed and exit early (to try again).
     if (isnan(h) || isnan(t)) 
     {
@@ -504,28 +477,28 @@ void FuelRelayOff()
   }
   mqttPrintStatus();
 }
-void SparkRelayOn()
+void GlowPlugRelayOn()
 {
-  Serial.println("Spark is ON");
-  if (SparkRelayState == false)
+  Serial.println("GlowPlug is ON");
+  if (GlowPlugRelayState == false)
   {
     digitalWrite(IGNITION_RELAY_PIN, LOW);
   //  tone(BEEP_PIN, 2000, 200);
     vTaskDelay(250 / portTICK_PERIOD_MS); //wait for conversion ready
-    SparkRelayState = true;
-    sparkStartTime = timenow;
+    GlowPlugRelayState = true;
+    glowplugStartTime = timenow;
   }
   mqttPrintStatus();
 }
-void SparkRelayOff()
+void GlowPlugRelayOff()
 {
-  Serial.println("Spark is OFF");
-  if (SparkRelayState == true)
+  Serial.println("GlowPlug is OFF");
+  if (GlowPlugRelayState == true)
   {
     digitalWrite(IGNITION_RELAY_PIN, HIGH);
  //   tone(BEEP_PIN, 1800, 200);
  //   tone(BEEP_PIN, 600, 200);
-    SparkRelayState = false;
+    GlowPlugRelayState = false;
   }
   mqttPrintStatus();
 }
@@ -675,9 +648,9 @@ void PressedEvent(int key)
       ChangeAutoMode();
       break;
     case BUTTON_M_PIN: //MENU
-    if(!IgnoreSparkCurrent)
+    if(!IgnoreGlowPlugCurrent)
     {
-      IgnoreSparkCurrent = true;
+      IgnoreGlowPlugCurrent = true;
     }
     break;
     case BUTTON_L_PIN: //LEFT
@@ -725,20 +698,20 @@ void PressedEvent(int key)
 }
 void pressHandler (BfButton *btn, BfButton::press_pattern_t pattern)
  {
-  Serial.print(btn->getPin());
+  //Serial.print(btn->getPin());
   switch (pattern)  {
     case BfButton::SINGLE_PRESS:
-      Serial.println(" pressed.");
+     // Serial.println(" pressed.");
       if(IsAlarm)
         break;
       else
       PressedEvent(btn->getPin());
       break;
     case BfButton::DOUBLE_PRESS:
-      Serial.println(" double pressed.");
+      //Serial.println(" double pressed.");
       break;
     case BfButton::LONG_PRESS:
-      Serial.println(" long pressed.");
+      //Serial.println(" long pressed.");
       break;
   }
 }
@@ -781,7 +754,7 @@ void StopDevice()
   Serial.println("StopDevice()!!!!...");
   FuelRelayOff();
   vTaskDelay(500 / portTICK_PERIOD_MS); //wait for conversion ready
-  SparkRelayOff();
+  GlowPlugRelayOff();
   vTaskDelay(500 / portTICK_PERIOD_MS); //wait for conversion ready
   MotorRelayOff();
   vTaskDelay(500 / portTICK_PERIOD_MS); //wait for conversion ready
@@ -818,7 +791,11 @@ void displayTask( void * pvParameters)
   display.setCursor(3, 3);
   display.print(F("vasp@zabmail.ru"));
 
-  vTaskDelay(3000 / portTICK_PERIOD_MS); //Show this 3 seconds
+  display.display();
+
+  vTaskDelay(4000 / portTICK_PERIOD_MS); //Show this 3 seconds
+
+  display.clear();
 
   //display.setCursor(0, 0); // установка позиции курсора
                           //
@@ -828,7 +805,6 @@ void displayTask( void * pvParameters)
                           //  0,3
   while (1)
   {
-    vTaskDelay(LCD_UPDATE_TIME / portTICK_PERIOD_MS);
     if(IsAlarm)
     {
       display.clear();
@@ -876,7 +852,7 @@ void displayTask( void * pvParameters)
         display.print(F("F"));
     }
 
-  //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
+    //sprintf(timeresult, "%02d:%02d", timenow.hour(), timenow.minute());
     display.setCursor(17, 0); // установка позиции курсора
     if(IsFired)
       display.print(F("\6OP"));
@@ -899,18 +875,18 @@ void displayTask( void * pvParameters)
     display.setCursor(0, 2); // установка позиции курсора
     display.print(F("CBE\3A"));
     display.setCursor(6, 2);
-    if (!SparkRelayState)
+    if (!GlowPlugRelayState)
       display.print(F("OFF           "));
     else
     {
-      TimeSpan sparkWorked = timenow - sparkStartTime;
+      TimeSpan glowplugWorked = timenow - glowplugStartTime;
       display.print(F("ON "));
       display.setCursor(11, 2);
       display.print(F("TOK "));
       display.setCursor(15, 2);
-      display.print(SparkCurrent);
+      display.print(GlowPlugCurrent);
       display.setCursor(18, 2);
-      display.print(sparkWorked.totalseconds());
+      display.print(glowplugWorked.totalseconds());
     }
 
 
@@ -925,24 +901,24 @@ void displayTask( void * pvParameters)
     display.setCursor(6, 3);
     display.print(CurrentTemp,0);
 
- /* if (currentMode == ModeManual)
-  {
-    display.setCursor(16, 3);
-    display.print(F("    "));
-  }
-  else
-  {*/
+  /* if (currentMode == ModeManual)
+    {
+      display.setCursor(16, 3);
+      display.print(F("    "));
+    }
+    else
+    {*/
     display.print(F("/"));
     display.print(neededTemp);
     display.setCursor(15, 3);
     display.print(timenow_tm, "%H:%M");
   //}
     display.display();
+
+    vTaskDelay( 500 / portTICK_PERIOD_MS);
   }
 }
-
 int lastMinute = 0;
-
 void ReadRTC()
 {
   getLocalTime(timenow_tm);
@@ -961,16 +937,16 @@ void ReadACS()
     return;
   }
   lastAcsUpdateTime = millis();
-  //ONLY CHECK IF Spark is on
-  if(!SparkRelayState)
+  //ONLY CHECK IF GlowPlug is on
+  if(!GlowPlugRelayState)
   {
-    SparkCurrent = 0;
+    GlowPlugCurrent = 0;
     return;
   }
-  //SparkCurrent = (ACS.mA_DC());// / 1000; //read spark DC in amperes
-  SparkCurrent = sensor.getCurrentDC();
+  //GlowPlugCurrent = (ACS.mA_DC());// / 1000; //read glowplug DC in amperes
+  GlowPlugCurrent = sensor.getCurrentDC();
   Serial.print("ACS: ");
-  Serial.println(SparkCurrent, DEC);
+  Serial.println(GlowPlugCurrent, DEC);
   mqttPrintStatus();
 
 }
@@ -978,9 +954,9 @@ bool CheckIgnition()
 {
   ReadACS();
 
-  if(SparkCurrent < 4)
+  if(GlowPlugCurrent < 4)
   {
-    if(!IgnoreSparkCurrent)
+    if(!IgnoreGlowPlugCurrent)
         IsNoIgnition = true; 
   } 
   else 
@@ -988,12 +964,12 @@ bool CheckIgnition()
     IsNoIgnition = false;
   }
 
- if(IsNoIgnition) //spark failed
+ if(IsNoIgnition) //glowplug failed
     {
       IsAlarm = true; //no ignition!!!
       currentStartStage = IdleToStart;
       FuelRelayOff();
-      SparkRelayOff();
+      GlowPlugRelayOff();
       MotorRelayOff();
     }
     return !IsNoIgnition;
@@ -1002,7 +978,7 @@ void StartFuelFn()
 {
     Serial.println("StartFuelFn()");
     FuelRelayOn();
-    SparkRelayOn();
+    GlowPlugRelayOn();
     currentStartStage = StartIgnition;
     dtStartIgnition = timenow;
     vTaskDelay(1000 / portTICK_PERIOD_MS); 
@@ -1013,11 +989,11 @@ void StartIgnitionFn()
     if(!CheckIgnition())
       return;
 
-    TimeSpan sparkTimei = timenow - dtStartIgnition;
+    TimeSpan glowplugTimei = timenow - dtStartIgnition;
 
-    //Serial.println(sparkTimei.totalseconds());
-    //msg = sparkTime.totalseconds();
-    if (sparkTimei.totalseconds() > 20 )
+    //Serial.println(glowplugTimei.totalseconds());
+    //msg = glowplugTime.totalseconds();
+    if (glowplugTimei.totalseconds() > 20 )
     {
       MotorSpeed1();
       vTaskDelay(1000 / portTICK_PERIOD_MS); 
@@ -1035,7 +1011,7 @@ void StartHalfMotorFn()
     //msg = halfMotorTime.totalseconds();
     if (halfMotorTime.totalseconds() > 20)
     {
-      SparkRelayOff();
+      GlowPlugRelayOff();
       currentStartStage = StopIgnition;
       dtStopIgnition = timenow;
     //  tone(BEEP_PIN, 4000, 100);
@@ -1153,7 +1129,7 @@ void ProcessShutDown()
       break;
     case StopFuel:
       FuelRelayOff();
-      SparkRelayOff();
+      GlowPlugRelayOff();
       MotorRelayOn();
       MotorSpeed2();
       timeFreeRun = timenow;
@@ -1181,15 +1157,27 @@ void ProcessShutDown()
     break;
   }
 }
-void setup()
+void wifiReConnectTask( void * pvParameters )
 {
-  Serial.begin(115200);
-
-  mqttReconnectTimer = xTimerCreate("mqttTimer", pdMS_TO_TICKS(2000), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(connectToMqtt));
-  wifiReconnectTimer = xTimerCreate("wifiTimer", pdMS_TO_TICKS(2000), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(connectToWifi));
   WiFi.onEvent(WiFiEvent);
-  // If your broker requires authentication (username and password), set them below
-
+  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  while (1)
+  {
+     if(!WiFi.isConnected() )
+    {
+        Serial.println("Connecting to Wi-Fi...");
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+    vTaskDelay(5000 / portTICK_PERIOD_MS); 
+  }
+}
+void mqttReConnectTask( void * pvParameters )
+{
+    
+  vTaskDelay(2000 / portTICK_PERIOD_MS); 
   mqttClient.onConnect(onMqttConnect);
   mqttClient.onDisconnect(onMqttDisconnect);
   mqttClient.onSubscribe(onMqttSubscribe);
@@ -1198,7 +1186,27 @@ void setup()
   mqttClient.onPublish(onMqttPublish);
   mqttClient.setServer(mqttHost, MQTT_PORT);
   mqttClient.setCredentials(MQTT_NAME, MQTT_PASSWORD);
-  connectToWifi();
+
+  while (1)
+  {
+    vTaskDelay(1000 / portTICK_PERIOD_MS); 
+    if(WiFi.isConnected() && !mqttClient.connected())
+    {
+      Serial.println("Connecting to MQTT...");
+      mqttClient.connect();
+    } else if(!WiFi.isConnected())
+    {
+        Serial.println("MQTT: no WiFi Connection...");
+        vTaskDelay(5000 / portTICK_PERIOD_MS); 
+    }
+  }
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  xTaskCreatePinnedToCore(wifiReConnectTask,"WiFiReconnect",4000,NULL,5,NULL,1);                             
+  xTaskCreatePinnedToCore(mqttReConnectTask,"MqttReconnectTask",4000,NULL,5,NULL,1);                             
   //temerature read task     
   xTaskCreatePinnedToCore(
     weatherTask,                       /* Function to implement the task */
@@ -1209,7 +1217,7 @@ void setup()
     NULL,                           /* Task handle. */
     0);                             /* Core where the task should run */
   //Display Show task     
-  xTaskCreatePinnedToCore(displayTask,"DisplayTask",4000,NULL,5,NULL,0);                             
+  xTaskCreatePinnedToCore(displayTask,"DisplayTask",4000,NULL,5,NULL,1);                             
 
   SetRTC();
 
@@ -1271,13 +1279,16 @@ void setup()
      .onDoublePress(pressHandler) // default timeout
      .onPressFor(pressHandler, 1000); // custom timeout for 1 second
 
+
+
+
   //OTA Web
    /*use mdns for host name resolution*/
   if (!MDNS.begin(host)) { //http://ov65.local
     Serial.println("Error setting up MDNS responder!");
-    while (1) {
+    /*while (1) {
       delay(1000);
-    }
+    }*/
   }
   Serial.println("mDNS responder started");
   /*return index page which is stored in serverIndex */
@@ -1307,7 +1318,8 @@ void setup()
         Update.printError(Serial);
       }
     } else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) { //true to set the size to the current progress
+      if (Update.end(true)) 
+      { //true to set the size to the current progress
         Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
       } else {
         Update.printError(Serial);

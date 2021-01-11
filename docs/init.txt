@@ -1,0 +1,25 @@
+
+START:
+1. Open valve
+2. On GlowPlug (always control current, if failed - ALARM STOP)
+3. Wait 20 seconds
+4. Turn motor 1 speed 
+5. Wait 20 seconds
+6. Turn off GlowPlug
+7. Wait for Fire sensor (3-4 minuites) 
+8. (UNDONE: - if failed - ALARM STOP)
+9. if Fire sensor - turn speed 2.
+10. Monitor For overheat, if happened - Turn off fuel. 
+
+STOP:
+2. Close valve, Set Speed 2
+3. Wait until Fire sensor is off and at least 120 seconds.
+4. Off motor.
+
+ALARM STOP:
+2. Close valve
+3. Wait until Fire sensor is off
+4. Off motor.
+5. STOP device with error
+
+
