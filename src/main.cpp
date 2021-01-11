@@ -1,5 +1,15 @@
 #include <Arduino.h>
+
 #include "secrets.h"
+/*
+//defined in secrets.h - NOT on Git
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
+#define MQTT_NAME ""
+#define MQTT_PASSWORD ""
+*/
+
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <OneWire.h>
